@@ -1,0 +1,10 @@
+{
+  "//": "Код игры для браузера: только DOM, без типов Bun, чтобы в бандл не попали серверные API.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

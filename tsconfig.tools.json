@@ -1,0 +1,10 @@
+{
+  "//": "Тесты и скрипты сборки/генерации ассетов: исполняются в Bun.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "allowJs": true
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts", "eslint.config.js"]
+}

@@ -358,6 +358,8 @@ export const en: Dict = { hire: "Hire a Workroach", … }; // забытый к�
 
 **Про TypeScript 7.** Последняя стабильная версия TS — 7.0: это компилятор, переписанный на Go (тебе как изучающему Go будет интересно заглянуть в исходники). Но typescript-eslint пока требует TypeScript < 6.1, а у TS 7 нет JS API, на котором держится type-aware линтинг. Проверено: `typescript.createProgram` там `undefined`. Поэтому стоим на 6.0.3 и переходим на 7, когда его поддержит typescript-eslint.
 
+**Windows 11** (рабочая машина заказчика). Скрипты в `scripts/` написаны на `node:fs`/`node:path`/Bun API без shell-команд, пути нормализуются через `path.relative`. `.gitattributes` фиксирует LF, иначе Prettier на Windows видит CRLF. Для генерации ассетов нужен Chromium для Playwright: `bunx playwright install chromium`. Для теста с телефона при первом `bun run dev` нужно разрешить Bun в брандмауэре Windows для частной сети. Игру тестируем в Chrome и Firefox.
+
 **Два tsconfig.** `tsconfig.json` — код игры: только DOM, **без** типов Bun, поэтому в браузерный код случайно не попадёт `Bun.file` или `process`. `tsconfig.tools.json` — тесты и скрипты с типами Bun. Общие строгие настройки лежат в `tsconfig.base.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` и др.
 
 ---

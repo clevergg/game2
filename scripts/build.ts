@@ -1,5 +1,6 @@
-/** Продакшн-сборка: index.html + бандл в dist/. Кроссплатформенно, без rm -rf. */
+/** Продакшн-сборка: index.html + бандл в dist/. Кроссплатформенно (Windows/macOS/Linux). */
 import { rm } from "node:fs/promises";
+import { relative } from "node:path";
 
 await rm("dist", { recursive: true, force: true });
 
@@ -16,4 +17,4 @@ if (!result.success) {
   process.exit(1);
 }
 for (const out of result.outputs)
-  console.log(`${out.path.replace(process.cwd() + "/", "")}  ${out.size} B`);
+  console.log(`${relative(process.cwd(), out.path)}  ${out.size} B`);

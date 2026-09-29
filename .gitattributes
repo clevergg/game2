@@ -1,0 +1,6 @@
+# Единые переводы строк на Windows/macOS/Linux: иначе Prettier на Windows видит CRLF и падает.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary

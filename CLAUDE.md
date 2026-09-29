@@ -8,7 +8,8 @@ HTML5-игра **«Конторка: Батраканы»** (en: «Kontorka: Wor
 - **Фаза 2 — Концепты и GDD: ЗАВЕРШЕНА** → [`docs/concepts.md`](docs/concepts.md), [`docs/gdd.md`](docs/gdd.md). Выбран концепт K.
 - **Фаза 3 — Архитектура: ЗАВЕРШЕНА** → [`docs/architecture.md`](docs/architecture.md), [`docs/roadmap.md`](docs/roadmap.md). Каркас и тулинг готовы, `bun run check` зелёный.
 - **Фаза 4 — Ассеты: ЗАВЕРШЕНА** → [`docs/art-direction.md`](docs/art-direction.md), превью в `docs/img/phase4-*.png`. Атлас 260 кадров, 163.5 КБ; звук синтезируется в коде.
-- Ожидается «дальше» → **Фаза 5 (вертикальный срез)**.
+- **Фаза 5 — Вертикальный срез: ЗАВЕРШЕНА** → [`docs/vertical-slice.md`](docs/vertical-slice.md) (запуск на ПК/телефоне, чек-лист теста). Играбелен цикл тап → найм → слияние → ранг; сборка 188 КБ gzip, TTI 1.8 с на slow 4G + CPU×4.
+- Ожидается фидбек плейтеста и «дальше» → **Фаза 6 (контент и полировка)**.
 
 Темп ускоренный: цель — отправить MVP на модерацию примерно 20.10.2026. MVP = отдел «Бухгалтерия», 10 рангов.
 
@@ -79,6 +80,7 @@ docs/                 документы фаз
 | `bun run check` | всё сразу — запускать перед каждым коммитом |
 | `bun run assets` | генерация атласа `assets/atlas.png` + `atlas.json` и превью `docs/img/phase4-*.png` (нужен Chromium для Playwright) |
 | `bun run audio:preview` | рендер всех звуков и музыки в WAV (`.cache/audio-preview/`) для прослушивания |
+| `bun run smoke` | сборка + автоплейтест в эмуляции телефона (Playwright): 12 проверок, TTI на slow 4G, скриншоты `docs/img/phase5-*.png` |
 
 ## Git
 
@@ -93,6 +95,15 @@ docs/                 документы фаз
 - Спрайт, упёршийся в край кадра, роняет генерацию с именем — расширять `FrameSpec` в `page/main.ts`.
 - Звук: `src/engine/audio/` (`synth.ts`, `sfx.ts` с нормализацией громкости, `music.ts`).
 - Playwright закреплён на 1.56.1 (Chromium ревизии 1194) ради побайтно одинакового результата.
+
+## Карта кода (Фаза 5)
+
+- `src/core/`: `state.ts` (OfficeState, всё предвыделено), `commands.ts` (tap/hire/move/trash — единственный способ менять состояние, возвращают 0 или DENY), `sim.ts` (выплаты раз в секунду со стола), `events.ts` (кольцевой буфер EV), `economy.ts` (формулы), `save.ts` (схема v1 со строгой валидацией).
+- `src/data/balance.ts` — все числа экономики. Инварианты — в `src/core/core.test.ts`.
+- `src/engine/`: `atlas.ts` (имена → индексы), `renderer.ts` (Canvas2D, DPR ≤ 2, без сглаживания), `input.ts` (тап/драг, один указатель), `particles.ts` (пулы частиц и всплывающих чисел пиксельным шрифтом), `audio/player.ts`.
+- `src/game/`: `app.ts` (сборка и связывание), `scene.ts` (рисование, реакции на события, хит-тесты), `layout.ts` (раскладка — чистая функция с тестами), `tutorial.ts`.
+- `src/ui/`: `store.ts` (снимок игры для UI раз в 100 мс, хук useStore), `App.tsx`.
+- Компактные числа: `src/i18n/format.ts` — один алгоритм для DOM и пиксельного шрифта.
 
 ## Словарь игры (единообразно в коде и доках)
 

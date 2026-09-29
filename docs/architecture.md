@@ -144,6 +144,8 @@ type Command =
 function apply(state: OfficeState, cmd: Command, out: EventQueue): CommandResult;
 ```
 
+> **Реализация (Фаза 5):** команды сделаны функциями `tap/hire/move/trash(state, …, queue)` вместо объектов `Command` — без аллокации на действие; смысл тот же. См. `docs/vertical-slice.md` §6.
+
 Это та же идея, что reducer в Redux или Zustand, только без копирования состояния: ради «нуля аллокаций» мутируем на месте, но строго внутри `core`. Правила (можно ли слить, хватает ли кукишей, свободен ли стол) живут в одном месте и тестируются.
 
 ### 5.3. События (core → рендер, звук, UI)

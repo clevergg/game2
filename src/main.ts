@@ -1,36 +1,25 @@
-import { startLoop } from "./engine/loop";
+import { startGame } from "./game/app";
+import { detectLang, setLang, t } from "./i18n";
+import { createLocalPlatform } from "./platform/local";
 
-const MAX_DPR = 2;
-
-function getCanvas(): HTMLCanvasElement {
-  const el = document.getElementById("stage");
-  if (!(el instanceof HTMLCanvasElement)) throw new Error("#stage canvas не найден");
-  return el;
+function el<T extends HTMLElement>(id: string, type: new () => T): T {
+  const e = document.getElementById(id);
+  if (!(e instanceof type)) throw new Error(`#${id} не найден`);
+  return e;
 }
 
-const canvas = getCanvas();
-const ctx = canvas.getContext("2d", { alpha: false });
-if (!ctx) throw new Error("Canvas2D недоступен");
+const platform = createLocalPlatform();
+const loader = document.getElementById("loader");
 
-function resize(): void {
-  const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-  canvas.width = Math.round(canvas.clientWidth * dpr);
-  canvas.height = Math.round(canvas.clientHeight * dpr);
-}
-window.addEventListener("resize", resize);
-resize();
-
-const loop = startLoop({
-  update() {
-    // Симуляция появится в Фазе 5 (src/core).
-  },
-  render() {
-    ctx.fillStyle = "#cfc8a8";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  },
-});
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) loop.pause();
-  else loop.resume();
-});
+startGame(platform, el("stage", HTMLCanvasElement), el("ui", HTMLDivElement))
+  .then(() => {
+    loader?.remove();
+  })
+  .catch((e: unknown) => {
+    console.error(e);
+    setLang(detectLang(platform.lang));
+    if (loader) {
+      loader.textContent = t("error");
+      loader.classList.add("failed");
+    }
+  });

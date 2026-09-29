@@ -1,0 +1,30 @@
+{
+  "name": "kontorka-batrakany",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --port=5173 --host=0.0.0.0 ./index.html",
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.tools.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "bun test",
+    "size": "bun scripts/check-size.ts",
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build && bun run size"
+  },
+  "budget": {
+    "totalGzipKB": 2500
+  },
+  "dependencies": {
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.4.2",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}

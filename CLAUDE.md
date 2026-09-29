@@ -7,7 +7,8 @@ HTML5-игра **«Конторка: Батраканы»** (en: «Kontorka: Wor
 - **Фаза 1 — Анализ рынка: ЗАВЕРШЕНА** → [`docs/market-research.md`](docs/market-research.md) (досье мема — §10).
 - **Фаза 2 — Концепты и GDD: ЗАВЕРШЕНА** → [`docs/concepts.md`](docs/concepts.md), [`docs/gdd.md`](docs/gdd.md). Выбран концепт K.
 - **Фаза 3 — Архитектура: ЗАВЕРШЕНА** → [`docs/architecture.md`](docs/architecture.md), [`docs/roadmap.md`](docs/roadmap.md). Каркас и тулинг готовы, `bun run check` зелёный.
-- Ожидается «дальше» → **Фаза 4 (ассеты)**.
+- **Фаза 4 — Ассеты: ЗАВЕРШЕНА** → [`docs/art-direction.md`](docs/art-direction.md), превью в `docs/img/phase4-*.png`. Атлас 260 кадров, 163.5 КБ; звук синтезируется в коде.
+- Ожидается «дальше» → **Фаза 5 (вертикальный срез)**.
 
 Темп ускоренный: цель — отправить MVP на модерацию примерно 20.10.2026. MVP = отдел «Бухгалтерия», 10 рангов.
 
@@ -76,12 +77,22 @@ docs/                 документы фаз
 | `bun test` | юнит-тесты |
 | `bun run size` | бюджет сборки |
 | `bun run check` | всё сразу — запускать перед каждым коммитом |
-| `bun run assets` | генерация ассетов (появится в Фазе 4) |
+| `bun run assets` | генерация атласа `assets/atlas.png` + `atlas.json` и превью `docs/img/phase4-*.png` (нужен Chromium для Playwright) |
+| `bun run audio:preview` | рендер всех звуков и музыки в WAV (`.cache/audio-preview/`) для прослушивания |
 
 ## Git
 
 - Рабочая ветка: `claude/admiring-turing-o07u8t` (репозиторий `clevergg/game2`).
 - Осмысленные коммиты после каждого рабочего блока, `bun run check` перед коммитом.
+
+## Ассеты (Фаза 4)
+
+- Генератор: `scripts/assets/` — `page/` работает в headless Chromium (модели Three.js, рендер по ID материалов), `lib/` — чистые утилиты с тестами (PNG с палитрой, дизеринг, обводка, упаковка, шрифт).
+- Палитра — `src/data/palette.ts` (22 рампы по 4 оттенка). Внешность рангов — `scripts/assets/page/looks.ts`.
+- `atlas.json`: `frames[name] = [x, y, w, h, ax, ay]` (якорь внутри кадра), `anims[name] = { frames, fps, loop }`. Батракан и стол рисуются в одну точку-якорь: сначала стол, потом батракан.
+- Спрайт, упёршийся в край кадра, роняет генерацию с именем — расширять `FrameSpec` в `page/main.ts`.
+- Звук: `src/engine/audio/` (`synth.ts`, `sfx.ts` с нормализацией громкости, `music.ts`).
+- Playwright закреплён на 1.56.1 (Chromium ревизии 1194) ради побайтно одинакового результата.
 
 ## Словарь игры (единообразно в коде и доках)
 

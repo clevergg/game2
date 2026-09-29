@@ -11,7 +11,9 @@
     "format:check": "prettier --check .",
     "test": "bun test",
     "size": "bun scripts/check-size.ts",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build && bun run size"
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build && bun run size",
+    "assets": "bun scripts/assets/build.ts",
+    "audio:preview": "bun scripts/assets/audio-preview.ts"
   },
   "budget": {
     "totalGzipKB": 2500
@@ -22,8 +24,11 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/bun": "^1.4.2",
+    "@types/three": "^0.186.0",
     "eslint": "^10.11.0",
+    "playwright": "1.56.1",
     "prettier": "^3.9.9",
+    "three": "^0.186.1",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.71.0"
   }

@@ -3,20 +3,40 @@
  * превращает события core в «сок» (анимации, тряску, звуки) и отвечает на вопросы ввода
  * («какой стол под пальцем?»). Состояние игры сцена только читает.
  */
-import { BALANCE } from "../data/balance";
+import { BALANCE, LIVE } from "../data/balance";
+import { FLOOR_COUNT } from "../data/floors";
 import { MAX_RANK } from "../data/ranks";
 import { EV } from "../core/events";
+import { NOTE } from "../core/live-state";
 import type { FloorState, OfficeState } from "../core/state";
 import { type Anim, Atlas } from "../engine/atlas";
 import type { AudioPlayer } from "../engine/audio/player";
 import type { FloatingNumbers, Particles } from "../engine/particles";
 import type { Renderer } from "../engine/renderer";
-import type { Layout } from "./layout";
+import { HUD_BOTTOM, HUD_TOP, type Layout } from "./layout";
 
 const ANIM = { idle: 0, work: 1, joy: 2, sad: 3 } as const;
 const ANIM_NAMES = ["idle", "work", "joy", "sad"] as const;
 const STYLE_GOLD = 0;
 const POP_TIME = 0.35;
+
+/** Что под пальцем, кроме батраканов: события на этаже. */
+export const HIT = { none: 0, note: 1, debik: 2, kredik: 3 } as const;
+
+/** События конкретного этажа; остальные (записки, дебики, баффы…) видны на любом этаже. */
+const FLOOR_EVENTS = new Set<number>([
+  EV.payout,
+  EV.tap,
+  EV.hired,
+  EV.merged,
+  EV.moved,
+  EV.swapped,
+  EV.trashed,
+  EV.rareAppeared,
+  EV.qualBought,
+  EV.equipBought,
+  EV.deskBought,
+]);
 
 export interface SceneSignals {
   /** Слияние: показать штамп «ПОВЫШЕНИЕ!» в точке экрана. */
@@ -26,15 +46,24 @@ export interface SceneSignals {
 }
 
 export class OfficeScene {
-  private readonly deskFrame: number;
-  private readonly lockedFrame: number;
+  /** Кадры мебели и пола по этажам. */
+  private readonly deskFrames = new Int16Array(FLOOR_COUNT);
+  private readonly lockedFrames = new Int16Array(FLOOR_COUNT);
+  private readonly floorFrames = new Int16Array(FLOOR_COUNT);
+  private readonly wallFrames = new Int16Array(FLOOR_COUNT);
   private readonly slopFrame: number;
-  private readonly floorFrame: number;
-  private readonly wallFrame: number;
   private readonly kukishFrame: number;
+  private readonly plusFrame: number;
+  private readonly noteAnim: Anim;
+  private readonly debikAnim: Anim;
+  private readonly kredikAnim: Anim;
+  /** Сколько секунд бежит текущий дебик (−1 — дебика нет). */
+  private debikT = -1;
+  private noteT = 0;
+  private sparkleIn = 0;
   private readonly greenDigits: Int16Array;
-  /** anims[rank][ANIM.*] */
-  private readonly anims: Anim[][] = [];
+  /** anims[этаж][ранг][ANIM.*] */
+  private readonly anims: Anim[][][] = [];
 
   private readonly anim: Uint8Array;
   private readonly animT: Float32Array;
@@ -57,7 +86,7 @@ export class OfficeScene {
   private seed = 12345;
 
   constructor(
-    atlas: Atlas,
+    private readonly atlas: Atlas,
     private readonly r: Renderer,
     private readonly particles: Particles,
     private readonly numbers: FloatingNumbers,
@@ -66,18 +95,27 @@ export class OfficeScene {
     private layout: Layout,
     private readonly signals: SceneSignals,
   ) {
-    this.deskFrame = atlas.frame("desk");
-    this.lockedFrame = atlas.frame("desk_locked");
+    for (let fi = 0; fi < FLOOR_COUNT; fi++) {
+      const p = `f${fi}_`;
+      this.deskFrames[fi] = atlas.frame(`${p}desk`);
+      this.lockedFrames[fi] = atlas.frame(`${p}desk_locked`);
+      this.floorFrames[fi] = atlas.frame(`${p}floor`);
+      this.wallFrames[fi] = atlas.frame(`${p}wall`);
+      const ranks: Anim[][] = [];
+      for (let rank = 0; rank <= MAX_RANK; rank++) {
+        ranks.push(rank === 0 ? [] : ANIM_NAMES.map((a) => atlas.anim(`${p}b${rank}_${a}`)));
+      }
+      this.anims.push(ranks);
+    }
     this.slopFrame = atlas.frame("slop");
-    this.floorFrame = atlas.frame("floor_carpet");
-    this.wallFrame = atlas.frame("wall_panel");
     this.kukishFrame = atlas.frame("kukish");
+    this.plusFrame = atlas.frame("font_gold_2b");
+    this.noteAnim = atlas.anim("note");
+    this.debikAnim = atlas.anim("debik_run");
+    this.kredikAnim = atlas.anim("kredik");
     this.greenDigits = Int16Array.from({ length: 10 }, (_, d) =>
       atlas.frame(`font_green_${(48 + d).toString(16)}`),
     );
-    for (let rank = 0; rank <= MAX_RANK; rank++) {
-      this.anims.push(rank === 0 ? [] : ANIM_NAMES.map((a) => atlas.anim(`b${rank}_${a}`)));
-    }
     const n = BALANCE.desksMax;
     this.anim = new Uint8Array(n).fill(ANIM.work);
     this.animT = new Float32Array(n);
@@ -118,8 +156,8 @@ export class OfficeScene {
   }
 
   onEvent(kind: number, f: number, a: number, b: number, value: number): void {
-    // События чужого этажа не рисуем: игрок их не видит (кроме общих — открытие ранга, отказ)
-    if (f !== this.floor && kind !== EV.rankUnlocked && kind !== EV.denied) return;
+    // События чужого этажа не рисуем: игрок их не видит
+    if (f !== this.floor && FLOOR_EVENTS.has(kind)) return;
     const L = this.layout;
     const s = L.scale;
     const x = L.deskX[a] ?? 0;
@@ -212,7 +250,125 @@ export class OfficeScene {
         this.audio.play("deny");
         this.signals.denied(b);
         break;
+      case EV.rareAppeared:
+        this.shake = 4;
+        this.sparkleBurst(x, (L.deskY[a] ?? 0) - 100 * s, 14);
+        this.audio.play("bonus");
+        break;
+      case EV.noteSpawned:
+        this.noteT = 0;
+        this.audio.play("note");
+        break;
+      case EV.debikSpawned:
+        this.debikT = 0;
+        this.audio.play("debik");
+        break;
+      case EV.debikLeft:
+        this.debikT = -1;
+        break;
+      case EV.debikCaught: {
+        this.debikPos();
+        this.debikT = -1;
+        this.numbers.spawn(value, this.ex, this.ey - 40 * s, STYLE_GOLD, s * 1.6);
+        this.sparkleBurst(this.ex, this.ey - 20 * s, 10);
+        this.audio.play("debikCatch");
+        break;
+      }
+      case EV.noteOpened:
+      case EV.shabashkaWon:
+      case EV.inspectionWon:
+      case EV.kredikAccepted:
+        this.audio.play("bonus");
+        break;
+      case EV.shiftDone:
+      case EV.taskDone:
+        this.audio.play("success");
+        break;
+      case EV.shabashkaLost:
+      case EV.inspectionLost:
+        this.audio.play("fail");
+        break;
+      case EV.buffStarted:
+        if (b === 2) this.audio.play("coloid");
+        break;
+      case EV.rewardClaimed:
+      case EV.qualBought:
+      case EV.equipBought:
+      case EV.deskBought:
+      case EV.perkBought:
+        this.audio.play("kukish", 1.2, 0.9);
+        break;
+      case EV.floorUnlocked:
+      case EV.reorganized:
+        this.shake = 9;
+        this.audio.play("rankUp");
+        break;
     }
+  }
+
+  private sparkleBurst(x: number, y: number, n: number): void {
+    const s = this.layout.scale;
+    for (let k = 0; k < n; k++) {
+      const ang = this.rand() * Math.PI * 2;
+      const sp = 80 + this.rand() * 140;
+      this.particles.spawn(
+        this.plusFrame,
+        x,
+        y,
+        Math.cos(ang) * sp,
+        Math.sin(ang) * sp - 120,
+        0.8,
+        380,
+        s * 1.4,
+      );
+    }
+  }
+
+  // ——— Записка, дебик, кредик: позиции на экране (пишутся в ex/ey, без аллокаций) ———
+
+  private ex = 0;
+  private ey = 0;
+
+  private notePos(): void {
+    const L = this.layout;
+    this.ex = L.contentLeft + L.contentW - 46;
+    this.ey = HUD_TOP + 58 + 6 * Math.sin(this.time * 3);
+  }
+
+  private debikPos(): void {
+    const L = this.layout;
+    const k = Math.min(1, Math.max(0, this.debikT / LIVE.debikTtl));
+    this.ex = L.contentLeft + 30 + k * (L.contentW - 60);
+    this.ey = L.h - HUD_BOTTOM - 10;
+  }
+
+  private kredikPos(): void {
+    this.ex = this.layout.contentLeft + 52;
+    this.ey = HUD_TOP + 150;
+  }
+
+  /** Где стоит кредик — для пузыря с предложением (DOM). */
+  kredikAnchor(): { x: number; y: number } {
+    this.kredikPos();
+    return { x: this.ex, y: this.ey };
+  }
+
+  /** Что из событий под пальцем. Проверяется раньше батраканов: события поверх офиса. */
+  hitEvent(x: number, y: number): number {
+    const live = this.state.live;
+    if (live.debikTtl > 0 && this.debikT >= 0) {
+      this.debikPos();
+      if (Math.hypot(x - this.ex, y - (this.ey - 20)) < 44) return HIT.debik;
+    }
+    if (live.note !== NOTE.none) {
+      this.notePos();
+      if (Math.hypot(x - this.ex, y - this.ey) < 40) return HIT.note;
+    }
+    if (live.kredikOffer > 0) {
+      this.kredikPos();
+      if (Math.hypot(x - this.ex, y - (this.ey - 50)) < 48) return HIT.kredik;
+    }
+    return HIT.none;
   }
 
   /** Визуальные таймеры — в частоте кадров, чтобы анимации были плавными. */
@@ -231,6 +387,35 @@ export class OfficeScene {
       if (p >= 0) this.pop[i] = p + dt > POP_TIME ? -1 : p + dt;
       const sq = this.squash[i] ?? 0;
       if (sq > 0) this.squash[i] = Math.max(0, sq - dt);
+    }
+    if (this.debikT >= 0) {
+      this.debikT += dt;
+      if (this.state.live.debikTtl <= 0) this.debikT = -1;
+    } else if (this.state.live.debikTtl > 0) {
+      // Дебик пришёл из сохранения или во время паузы — бежит с текущей точки
+      this.debikT = LIVE.debikTtl - this.state.live.debikTtl;
+    }
+    this.noteT += dt;
+    // Премированные батраканы искрят
+    this.sparkleIn -= dt;
+    if (this.sparkleIn <= 0) {
+      this.sparkleIn = 0.35;
+      const st = this.fs;
+      for (let i = 0; i < st.deskCount; i++) {
+        if (st.rare[i] === 1 && (st.desks[i] ?? 0) > 0 && this.rand() < 0.6) {
+          const s = this.layout.scale;
+          this.particles.spawn(
+            this.plusFrame,
+            (this.layout.deskX[i] ?? 0) + (this.rand() - 0.5) * 70 * s,
+            (this.layout.deskY[i] ?? 0) - (60 + this.rand() * 90) * s,
+            0,
+            -40,
+            0.9,
+            0,
+            s * 1.2,
+          );
+        }
+      }
     }
     this.shake = Math.max(0, this.shake - dt * 40);
     this.slopBounce = Math.max(0, this.slopBounce - dt);
@@ -257,9 +442,12 @@ export class OfficeScene {
     const sx = this.shake > 0 ? (this.rand() - 0.5) * this.shake : 0;
     const sy = this.shake > 0 ? (this.rand() - 0.5) * this.shake : 0;
     r.begin(sx, sy);
-    r.tile(this.floorFrame, -8, -8, L.w + 16, L.h + 16, s);
+    const fi = this.floor;
+    r.tile(this.floorFrames[fi] ?? 0, -8, -8, L.w + 16, L.h + 16, s);
     const wallH = 96 * s;
-    r.tile(this.wallFrame, -8, 64 + 24 * s - wallH, L.w + 16, wallH, s);
+    r.tile(this.wallFrames[fi] ?? 0, -8, 64 + 24 * s - wallH, L.w + 16, wallH, s);
+    const deskFrame = this.deskFrames[fi] ?? 0;
+    const anims = this.anims[fi] ?? [];
 
     const st = this.fs;
     const cols = L.cols;
@@ -267,8 +455,8 @@ export class OfficeScene {
     for (let i = 0; i < total && i < BALANCE.desksMax; i++) {
       const x = L.deskX[i] ?? 0;
       const y = L.deskY[i] ?? 0;
-      if (i >= st.deskCount) {
-        r.sprite(this.lockedFrame, x, y, s, s, 1);
+      if (i >= st.deskCount || fi >= this.state.floorsUnlocked) {
+        r.sprite(this.lockedFrames[fi] ?? 0, x, y, s, s, 1);
         continue;
       }
       if (this.dragFrom >= 0 && i === this.dragTarget) {
@@ -276,10 +464,21 @@ export class OfficeScene {
         const pulse = 0.45 + 0.25 * Math.sin(this.time * 10);
         r.ellipse(x, y - 4 * s, 70 * s, 26 * s, mergeable ? "#ffd048" : "#fffaf0", pulse);
       }
-      r.sprite(this.deskFrame, x, y, s, s, 1);
       const rank = st.desks[i] ?? 0;
+      if (rank > 0 && st.rare[i] === 1) {
+        // Премированный: золотое свечение под столом
+        r.ellipse(
+          x,
+          y - 6 * s,
+          74 * s,
+          28 * s,
+          "#ffd048",
+          0.35 + 0.2 * Math.sin(this.time * 4 + i),
+        );
+      }
+      r.sprite(deskFrame, x, y, s, s, 1);
       if (rank === 0 || i === this.dragFrom) continue;
-      const a = this.anims[rank]?.[this.anim[i] ?? ANIM.work];
+      const a = anims[rank]?.[this.anim[i] ?? ANIM.work];
       if (!a) continue;
       const ps = this.popScale(i);
       const sq = this.squash[i] ?? 0;
@@ -318,12 +517,13 @@ export class OfficeScene {
       1,
     );
 
+    this.drawEvents();
     this.particles.draw(r);
     this.numbers.draw(r);
 
     if (this.dragFrom >= 0) {
       const rank = st.desks[this.dragFrom] ?? 0;
-      const a = this.anims[rank]?.[ANIM.idle];
+      const a = anims[rank]?.[ANIM.idle];
       if (a) {
         r.ellipse(this.dragX, this.dragY + 30 * s, 36 * s, 12 * s, "#1c1620", 0.3);
         r.sprite(
@@ -335,6 +535,31 @@ export class OfficeScene {
           1,
         );
       }
+    }
+  }
+
+  private drawEvents(): void {
+    const r = this.r;
+    const live = this.state.live;
+    if (live.kredikOffer > 0) {
+      this.kredikPos();
+      r.ellipse(this.ex, this.ey - 4, 30, 9, "#1c1620", 0.25);
+      r.sprite(Atlas.frameAt(this.kredikAnim, this.time), this.ex, this.ey, 0.9, 0.9, 1);
+    }
+    if (live.note !== NOTE.none) {
+      this.notePos();
+      const nx = this.ex;
+      const ny = this.ey;
+      // Записка пульсирует сильнее, когда скоро исчезнет
+      const urgent = live.noteTtl < 4 ? 1 + 0.12 * Math.sin(this.time * 14) : 1;
+      const k = Math.min(1, this.noteT * 4) * urgent;
+      r.ellipse(nx, ny + 4, 34 * k, 34 * k, "#fff0a0", 0.35 + 0.15 * Math.sin(this.time * 6));
+      r.sprite(Atlas.frameAt(this.noteAnim, this.time), nx, ny, 1.1 * k, 1.1 * k, 1);
+    }
+    if (live.debikTtl > 0 && this.debikT >= 0) {
+      this.debikPos();
+      r.ellipse(this.ex, this.ey - 2, 26, 7, "#1c1620", 0.25);
+      r.sprite(Atlas.frameAt(this.debikAnim, this.time), this.ex, this.ey, 1, 1, 1);
     }
   }
 
@@ -393,6 +618,11 @@ export class OfficeScene {
     this.dragTarget = -1;
     this.dragOverSlop = false;
     return res;
+  }
+
+  /** Загружен ли лист атласа с этажом на экране (листы этажей грузятся лениво). */
+  get floorReady(): boolean {
+    return this.atlas.isLoaded(this.atlas.sheet[this.deskFrames[this.floor] ?? 0] ?? 0);
   }
 
   get dragging(): boolean {

@@ -53,7 +53,20 @@ export function useStore<T extends object>(store: Store<T>): T {
 export type HintKind = "tap" | "hire" | "merge";
 
 export type PanelKind = "none" | "hr" | "tasks";
-export type HrTab = "floor" | "alesya" | "cards";
+export type HrTab = "floor" | "alesya" | "cards" | "board";
+
+export interface BoardView {
+  readonly status: "loading" | "ready" | "none";
+  readonly entries: readonly {
+    readonly rank: number;
+    readonly name: string;
+    readonly score: number;
+    readonly me: boolean;
+  }[];
+  readonly myRank: number;
+  readonly myScore: number;
+  readonly canLogin: boolean;
+}
 
 export type Modal =
   | { readonly kind: "shift"; readonly reward: number }
@@ -158,6 +171,7 @@ export interface UiState {
   readonly tasks: TasksView | null;
   /** Показывается реклама — кнопки рекламы недоступны. */
   readonly adBusy: boolean;
+  readonly board: BoardView | null;
 }
 
 export const INITIAL_UI: UiState = {
@@ -191,4 +205,5 @@ export const INITIAL_UI: UiState = {
   hr: null,
   tasks: null,
   adBusy: false,
+  board: null,
 };

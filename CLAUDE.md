@@ -11,7 +11,8 @@ HTML5-игра **«Конторка: Батраканы»** (en: «Kontorka: Wor
 - **Фаза 5 — Вертикальный срез: ЗАВЕРШЕНА** → [`docs/vertical-slice.md`](docs/vertical-slice.md) (запуск на ПК/телефоне, чек-лист теста). Играбелен цикл тап → найм → слияние → ранг; сборка 188 КБ gzip, TTI 1.8 с на slow 4G + CPU×4.
 - **Плейтест среза (07.10):** игра проходится < 10 мин. Диагноз и варианты долгой прогрессии → [`docs/progression.md`](docs/progression.md): экономика «взрывная» (бот берёт ранг 10 за 12 с), рекомендовано направление A «Вертикаль Конторки» (этажи-отделы до кабинета Хозяина + реорганизация + смены/поручения).
 - **Фаза 6 — «Вертикаль Конторки»: ЗАВЕРШЕНА** → [`docs/phase6.md`](docs/phase6.md). Решения заказчика 07.10: направление A, 3 этажа к модерации, персонажи с именами (Тося Бося, Кудесница Алеся). GDD v0.2 — раздел 0 в [`docs/gdd.md`](docs/gdd.md). Экономика v2 + симулятор темпа, события и дневные слои, Склад и Конторка дизайнеров, лифт, отдел квадров, поручения, имитация рекламы. Сборка 572 КБ gzip, TTI 2,4 с.
-- Следующая — **Фаза 7: интеграция Yandex SDK** (после «дальше»).
+- **Фаза 7 — Интеграция Yandex SDK: ЗАВЕРШЕНА** → [`docs/phase7.md`](docs/phase7.md). `YandexPlatform` (SDK с таймаутом, реклама, облако, лидерборд `career`, `serverTime`, внешняя пауза), матрица отказов, архив `bun run pack`. Заказчик загружает архив в черновик и создаёт лидерборд `career` (phase7 §4).
+- Следующая — **Фаза 8: публикация** (страница игры, тексты, обложки, модерация; после «дальше»).
 
 Темп ускоренный: цель — отправить MVP на модерацию ~24–27.10.2026. MVP = 3 этажа (Бухгалтерия, Склад, Конторка дизайнеров) по 10 рангов, GDD §0.9.
 
@@ -83,6 +84,8 @@ docs/                 документы фаз
 | `bun run assets` | генерация атласа `assets/atlas.png` + `atlas.json` и превью `docs/img/phase4-*.png` (нужен Chromium для Playwright) |
 | `bun run audio:preview` | рендер всех звуков и музыки в WAV (`.cache/audio-preview/`) для прослушивания |
 | `bun run smoke` | сборка + автоплейтест в эмуляции телефона (Playwright): 18 проверок (вкл. позднюю игру: отгул, лифт, перки, реклама), TTI на slow 4G, скриншоты `docs/img/phase6-*.png` |
+| `bun run smoke:sdk` | матрица отказов платформы с поддельным SDK: ok / hang / broken (входит в `smoke`) |
+| `bun run pack` | сборка + проверки требований Яндекса + `release/kontorka-<версия>.zip` для консоли |
 | `bun run balance` | симулятор баланса: бот играет 40 ч на настоящем core, вехи против целей GDD §0.10 (`--no-events` — пассивный игрок) |
 
 ## Git
@@ -107,20 +110,22 @@ docs/                 документы фаз
 - `src/engine/`: `atlas.ts` (имена → индексы), `renderer.ts` (Canvas2D, DPR ≤ 2, без сглаживания), `input.ts` (тап/драг, один указатель), `particles.ts` (пулы частиц и всплывающих чисел пиксельным шрифтом), `audio/player.ts`.
 - `src/game/`: `app.ts` (сборка, ввод → команды, события → тосты/окна, лифт, дни, отгул), `scene.ts` (рисование этажа, записка/дебик/кредик, хит-тесты), `ads.ts` (реклама + пауза + ad-guard), `snapshot.ts` (состояние → данные UI, с тестами), `days.ts`, `layout.ts`, `tutorial.ts`.
 - `src/ui/`: `store.ts` (типы снимка, хук useStore), `actions.ts`, `App.tsx` (HUD, лифт, нижняя панель), `Panels.tsx` (отдел квадров, поручения), `Modals.tsx`, `Icon.tsx`.
-- `src/platform/`: `Platform` с `showRewarded/showInterstitial`; `LocalPlatform(fakeAds)` — имитация рекламы вне фрейма или по `?fakeAds=1`.
+- `src/platform/`: интерфейс `Platform` (время, сохранения, пауза, реклама, лидерборд, вход); `yandex.ts` — SDK с относительного `/sdk.js`, таймаут 3 с, все вызовы обёрнуты; `cloud.ts` — выбор свежего сохранения и ограничитель записи (с тестами); `local.ts` — `LocalPlatform(fakeAds)`. `main.ts` на localhost/LAN вне фрейма SDK не ищет; `?platform=yandex|local` — принудительно.
+- `src/game/pause.ts` — пауза по причинам (вкладка, реклама, `game_api_pause`).
+- `scripts/pack/` — ZIP-упаковщик и правила архива (с тестами); `scripts/smoke-sdk.ts` — поддельный SDK.
 - Компактные числа: `src/i18n/format.ts` — один алгоритм для DOM и пиксельного шрифта.
 
 ## Словарь игры (единообразно в коде и доках)
 
 батракан (Workroach), кукиши (figs), колупать циферки (crunch digits), отдел квадров (Department of Human Squares), Хозяин (the Boss), записка (note), шабашка (side gig), слоповина (Slop Pit), дебик (debit bug), премия (bonus), калоидный ускоритель (Coloid Accelerator), реорганизация (restructuring, prestige), выслуга (seniority), картотека (card index), доска почёта (Hall of Fame), аванс (daily advance), отгул (day off, offline income).
 
-## Платформенные факты для сверки (перепроверять перед Фазой 7)
+## Платформенные факты (сверены в Фазе 7, источники — docs/phase7.md §2)
 
-- Архив ≤ 100 МБ до сжатия, `index.html` в корне, без пробелов в именах. `[verify]`
+- Архив ≤ 100 МБ до сжатия, `index.html` в корне, имена без пробелов и кириллицы. Модерация 3–5 рабочих дней.
 - SDK: `/sdk.js` → `YaGames.init()`; `LoadingAPI.ready()` при готовности к игре; `GameplayAPI.start()/stop()` на входе и выходе из геймплея.
 - Реклама: `showFullscreenAdv` (`onOpen`, `onClose(wasShown)`, `onError`), `showRewardedVideo` (+ `onRewarded`). Частоту interstitial контролирует Yandex. Во время показа — пауза звука и геймплея.
 - Сохранения: `player.setData` ≤ 200 КБ на игрока, параметр `flush`.
-- Лидерборд: `setScore` не чаще 1 раза в секунду, проверка `isAvailableMethod`.
+- Лидерборд: новый API `ysdk.leaderboards.setScore/getEntries`, ≤ 60 запросов в минуту, проверка `isAvailableMethod`. Наш лидерборд — `career`.
 - Язык: `environment.i18n.lang`. Время: `serverTime()`.
-- Имена событий внешней паузы (`game_api_pause/resume`) и облачные сохранения анонимов — `[verify]`.
+- Внешняя пауза: `ysdk.on("game_api_pause" | "game_api_resume")`. Облачные сохранения анонимов — проверить в черновике.
 - Авторизация только через Yandex ID (опционально), сторонняя запрещена.

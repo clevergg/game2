@@ -87,7 +87,7 @@ docs/                 документы фаз
 | `bun run smoke:sdk` | матрица отказов платформы с поддельным SDK: ok / hang / broken (входит в `smoke`) |
 | `bun run pack` | сборка + проверки требований Яндекса + `release/kontorka-<версия>.zip` для консоли |
 | `bun run promo` | промо для страницы игры: иконка 512, обложки 800×470 ru/en, скриншоты 1080×1920 и 1920×1080 ru/en → `release/promo/`, `release/kontorka-promo.zip` |
-| `bun run promo:video` | горизонтальное геймплейное видео MP4 1920×1080, 26 с (запись с подменёнными часами + ffmpeg-static) → `release/promo/video-1920x1080-ru.mp4` |
+| `bun run promo:video` | горизонтальное геймплейное видео MP4 1920×1080, 26 с (запись с подменёнными часами + ffmpeg-static, ~5 мин; Chromium с `--disable-gpu` — через SwiftShader в 10–50 раз медленнее) → `release/promo/video-1920x1080-ru.mp4` |
 | `bun run balance` | симулятор баланса: бот играет 40 ч на настоящем core, вехи против целей GDD §0.10 (`--no-events` — пассивный игрок) |
 
 ## Git

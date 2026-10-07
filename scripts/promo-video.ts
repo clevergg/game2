@@ -163,9 +163,8 @@ interface Drag {
 }
 const DRAG_FRAMES = 14;
 
-const browser = await chromium.launch({
-  args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-});
+// Растеризация на CPU: скриншот 1920×1080 в 10–50 раз быстрее, чем через программный GPU (SwiftShader)
+const browser = await chromium.launch({ args: ["--disable-gpu"] });
 try {
   await mkdir(OUT, { recursive: true });
   const ctx = await browser.newContext({

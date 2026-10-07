@@ -4,8 +4,9 @@
  * Мир: начало координат — центр стола на полу, камера смотрит с +z, батракан сидит за столом лицом к камере.
  */
 import * as THREE from "three";
+import type { RampName } from "../../../../src/data/palette";
 import type { RankLook } from "../looks";
-import { at, ball, box, cyl, disc, group, type MatSpec, mesh, ring, scaled } from "../kit";
+import { at, ball, box, cyl, cylArc, disc, group, type MatSpec, mesh, ring, scaled } from "../kit";
 
 export const SEAT_Z = -0.6;
 /** Общий масштаб батракана относительно мебели: персонаж важнее стола. */
@@ -39,7 +40,7 @@ function chestZ(y: number): number {
   return r * Math.cos(Math.PI / 6) * 0.72 + 0.012;
 }
 
-function chair(kind: RankLook["chair"]): THREE.Group {
+function chair(kind: RankLook["chair"], floorRamp: RampName): THREE.Group {
   const g = group();
   const seatSpec: MatSpec =
     kind === "throne" ? { ramp: "burgundy" } : kind === "manager" ? { ramp: "fabric", bias: -0.4 } : { ramp: "fabric" };
@@ -67,14 +68,14 @@ function chair(kind: RankLook["chair"]): THREE.Group {
     g.add(at(box(0.07, 0.07, 0.42, gold), -0.3, 0.68, -0.04));
     g.add(at(box(0.07, 0.07, 0.42, gold), 0.3, 0.68, -0.04));
   }
-  g.add(scaled(at(disc(0.36, 10, { ramp: "carpet", fixedShade: 3 }), 0, 0.003, 0), 1, 1, 0.75));
+  g.add(scaled(at(disc(0.36, 10, { ramp: floorRamp, fixedShade: 3 }), 0, 0.003, 0), 1, 1, 0.75));
   return g;
 }
 
-function arm(side: 1 | -1, sleeve: MatSpec): { shoulder: THREE.Group; elbow: THREE.Group } {
+function arm(side: 1 | -1, sleeve: MatSpec, hand: MatSpec): { shoulder: THREE.Group; elbow: THREE.Group } {
   const elbow = group(
     at(cyl(0.045, 0.04, 0.25, 5, sleeve), 0, -0.125, 0),
-    at(ball(0.055, 0, CHITIN), 0, -0.27, 0),
+    at(ball(0.055, 0, hand), 0, -0.27, 0),
   );
   elbow.position.set(0, -0.27, 0);
   const shoulder = group(at(cyl(0.052, 0.047, 0.28, 5, sleeve), 0, -0.135, 0), elbow);
@@ -105,8 +106,8 @@ function antenna(side: 1 | -1, len: number): { root: THREE.Group; joints: THREE.
   return { root, joints };
 }
 
-export function buildBatrakan(look: RankLook): Rig {
-  const root = group(chair(look.chair));
+export function buildBatrakan(look: RankLook, floorRamp: RampName = "carpet"): Rig {
+  const root = group(chair(look.chair, floorRamp));
   root.position.set(0, 0, SEAT_Z);
   root.scale.setScalar(look.scale * BODY_SCALE);
 
@@ -124,15 +125,50 @@ export function buildBatrakan(look: RankLook): Rig {
   // Торс
   const topSpec: MatSpec = { ramp: look.topRamp };
   const shirtSpec: MatSpec = { ramp: "shirt" };
-  const sleeve = look.top === "jacket" ? topSpec : shirtSpec;
+  const underSpec: MatSpec = { ramp: look.underRamp };
+  const sleeve =
+    look.top === "jacket" || look.top === "tee" || look.top === "hoodie"
+      ? topSpec
+      : look.top === "hivis"
+        ? underSpec
+        : shirtSpec;
   const torso = group();
   torso.position.set(0, 0.62, 0);
   body.add(torso);
-  const torsoMesh = cyl(0.2, 0.16, 0.44, 6, look.top === "shirt" ? shirtSpec : topSpec);
+  const torsoSpec = look.top === "shirt" ? shirtSpec : look.top === "hivis" ? underSpec : topSpec;
+  const torsoMesh = cyl(0.2, 0.16, 0.44, 6, torsoSpec);
   torsoMesh.geometry.rotateY(Math.PI / 6);
   torso.add(scaled(at(torsoMesh, 0, 0.22, 0), 1, 1, 0.72));
 
-  if (look.top !== "shirt") {
+  if (look.top === "hivis") {
+    // Сигнальный жилет: две полы поверх футболки и светоотражающие полосы
+    const reflect: MatSpec = { ramp: "steel", bias: -1.2 };
+    for (const start of [Math.PI * 0.09, Math.PI]) {
+      torso.add(scaled(at(cylArc(0.208, 0.168, 0.4, 5, topSpec, start, Math.PI * 0.91), 0, 0.21, 0), 1, 1, 0.76));
+    }
+    for (const y of [0.13, 0.27]) {
+      for (const s of [-1, 1] as const) {
+        torso.add(at(box(0.11, 0.035, 0.012, reflect), 0.1 * s, y, chestZ(y) + 0.01, 0, 0.25 * s, 0));
+      }
+    }
+  }
+  if (look.top === "hoodie") {
+    const dark: MatSpec = { ramp: look.topRamp, bias: 0.8 };
+    // Капюшон лежит на плечах за шеей, карман-кенгуру и шнурки спереди
+    torso.add(scaled(at(ring(0.13, 0.055, 10, topSpec, Math.PI), 0, 0.44, -0.02, -Math.PI / 2 + 0.25, 0, Math.PI), 1, 1, 0.9));
+    torso.add(at(box(0.2, 0.09, 0.015, dark), 0, 0.09, chestZ(0.09) + 0.006));
+    for (const s of [-1, 1]) {
+      torso.add(at(cyl(0.008, 0.008, 0.12, 3, { ramp: "studio" }), 0.035 * s, 0.33, chestZ(0.33) + 0.012));
+    }
+  }
+  if (look.scarf) {
+    const scarf: MatSpec = { ramp: look.scarf };
+    torso.add(scaled(at(ring(0.1, 0.04, 10, scarf), 0, 0.45, 0.01, Math.PI / 2), 1, 1, 0.9));
+    torso.add(at(box(0.07, 0.2, 0.03, scarf), 0.06, 0.32, chestZ(0.32) + 0.02, 0, 0, 0.12));
+    torso.add(at(box(0.07, 0.025, 0.035, { ramp: look.scarf, bias: 0.8 }), 0.072, 0.23, chestZ(0.23) + 0.022, 0, 0, 0.12));
+  }
+
+  if (look.top === "vest" || look.top === "jacket") {
     torso.add(at(box(look.top === "vest" ? 0.1 : 0.13, 0.2, 0.01, shirtSpec), 0, 0.33, chestZ(0.33)));
   }
   if (look.top === "jacket") {
@@ -154,8 +190,9 @@ export function buildBatrakan(look: RankLook): Rig {
     torso.add(at(cyl(0.011, 0.011, 0.11, 4, { ramp: "gold" }), -0.1, 0.32, chestZ(0.32) + 0.01, 0, 0, 0.15));
   }
 
-  const armL = arm(-1, sleeve);
-  const armR = arm(1, sleeve);
+  const hand: MatSpec = look.gloves ? { ramp: look.gloves } : CHITIN;
+  const armL = arm(-1, sleeve, hand);
+  const armR = arm(1, sleeve, hand);
   torso.add(armL.shoulder, armR.shoulder);
 
   // Голова
@@ -164,13 +201,7 @@ export function buildBatrakan(look: RankLook): Rig {
   head.position.set(0, 0.5, 0);
   head.scale.setScalar(HEAD_SCALE);
   torso.add(head);
-  head.add(scaled(at(ball(0.16, 1, CHITIN), 0, 0.16, 0), 0.95, 1.15, 0.92));
-  // «Маска» без черт лица: светлее основного хитина, задаёт направление взгляда
-  head.add(scaled(at(ball(0.13, 1, { ramp: "chitin", bias: -1.3 }), 0, 0.15, 0.09), 0.82, 1, 0.38));
-
-  const antL = antenna(-1, look.antenna);
-  const antR = antenna(1, look.antenna);
-  head.add(antL.root, antR.root);
+  const { antL, antR } = addHeadShape(head, look.antenna);
 
   if (look.glasses !== "none") {
     const frame: MatSpec = look.glasses === "gold" ? { ramp: "gold", bias: 0.4 } : { ramp: "fabric", bias: 1 };
@@ -191,9 +222,33 @@ export function buildBatrakan(look: RankLook): Rig {
     head.add(at(brimMesh(visor), 0, 0.235, 0.05, 0.35));
   }
   if (look.cap) {
-    const red: MatSpec = { ramp: "red" };
-    head.add(scaled(at(ball(0.165, 1, red), 0, 0.25, -0.01), 1, 0.55, 1));
-    head.add(at(box(0.16, 0.02, 0.14, { ramp: "red", bias: 0.6 }), 0, 0.25, -0.2, -0.25));
+    const cap: MatSpec = { ramp: look.capRamp };
+    head.add(scaled(at(ball(0.165, 1, cap), 0, 0.25, -0.01), 1, 0.55, 1));
+    head.add(at(box(0.16, 0.02, 0.14, { ramp: look.capRamp, bias: 0.6 }), 0, 0.25, -0.2, -0.25));
+  }
+  if (look.phones) {
+    const band: MatSpec = { ramp: "fabric", bias: -0.4 };
+    const cup: MatSpec = { ramp: look.topRamp === "fabric" ? "studio" : "fabric" };
+    head.add(at(ring(0.18, 0.022, 10, band, Math.PI), 0, 0.17, 0));
+    for (const s of [-1, 1]) {
+      head.add(at(cyl(0.075, 0.075, 0.06, 8, cup), 0.175 * s, 0.14, 0, 0, 0, Math.PI / 2));
+      head.add(at(cyl(0.05, 0.05, 0.065, 8, { ramp: "pink", fixedShade: 1 }), 0.18 * s, 0.14, 0, 0, 0, Math.PI / 2));
+    }
+  }
+  if (look.hat === "hardhat") {
+    const hat: MatSpec = { ramp: look.hatRamp };
+    head.add(scaled(at(ball(0.175, 1, hat), 0, 0.27, -0.005), 1, 0.72, 1));
+    head.add(at(cyl(0.215, 0.215, 0.02, 12, { ramp: look.hatRamp, bias: 0.5 }), 0, 0.255, 0.015));
+    head.add(at(box(0.045, 0.035, 0.3, { ramp: look.hatRamp, bias: -0.4 }), 0, 0.39, -0.005));
+  } else if (look.hat === "beanie") {
+    const hat: MatSpec = { ramp: look.hatRamp };
+    head.add(scaled(at(ball(0.172, 1, hat), 0, 0.27, -0.01), 1, 0.78, 1));
+    head.add(at(ring(0.163, 0.03, 12, { ramp: look.hatRamp, bias: 0.6 }), 0, 0.235, -0.005, Math.PI / 2));
+    head.add(at(ball(0.05, 0, { ramp: "studio" }), 0, 0.42, -0.01));
+  } else if (look.hat === "beret") {
+    const hat: MatSpec = { ramp: look.hatRamp };
+    head.add(at(cyl(0.2, 0.17, 0.06, 12, hat), 0.03, 0.33, -0.01, 0.1, 0, -0.22));
+    head.add(at(cyl(0.012, 0.016, 0.05, 4, { ramp: look.hatRamp, bias: 0.8 }), 0.05, 0.38, -0.01, 0, 0, -0.22));
   }
   if (look.halo) {
     head.add(at(ring(0.17, 0.025, 12, { ramp: "gold", fixedShade: 0 }), 0, 0.52, -0.02, Math.PI / 2 - 0.35));
@@ -208,6 +263,31 @@ export function buildBatrakan(look: RankLook): Rig {
     shoulders: [armL.shoulder, armR.shoulder],
     elbows: [armL.elbow, armR.elbow],
   };
+}
+
+/** Голова батракана: хитиновый шар, безликая «маска» и усики. Общая для рангов и персонажей. */
+export function addHeadShape(
+  head: THREE.Group,
+  antennaLen: number,
+): { antL: { joints: THREE.Group[] }; antR: { joints: THREE.Group[] } } {
+  head.add(scaled(at(ball(0.16, 1, CHITIN), 0, 0.16, 0), 0.95, 1.15, 0.92));
+  // «Маска» без черт лица: светлее основного хитина, задаёт направление взгляда
+  head.add(scaled(at(ball(0.13, 1, { ramp: "chitin", bias: -1.3 }), 0, 0.15, 0.09), 0.82, 1, 0.38));
+  const antL = antenna(-1, antennaLen);
+  const antR = antenna(1, antennaLen);
+  head.add(antL.root, antR.root);
+  return { antL, antR };
+}
+
+/** Изгиб усиков (как в позе idle): основание назад, кончики вперёд. */
+export function relaxAntennae(chains: readonly (readonly THREE.Group[])[], back = -0.45, curl = -0.35): void {
+  chains.forEach((chain, k) => {
+    const side = k === 0 ? -1 : 1;
+    chain.forEach((j, i) => {
+      if (i === 0) j.rotation.set(back, 0, side * -0.35);
+      else j.rotation.set(curl, 0, side * -0.1 * i);
+    });
+  });
 }
 
 /** Козырёк бухгалтера: полукруглый край только спереди. */

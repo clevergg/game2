@@ -54,7 +54,8 @@ export class CanvasRenderer implements Renderer {
     const a = this.atlas;
     const w = a.w[frame] ?? 0;
     const h = a.h[frame] ?? 0;
-    if (w === 0 || alpha <= 0) return;
+    const image = a.imageOf(frame);
+    if (w === 0 || alpha <= 0 || !image) return;
     const ax = a.ax[frame] ?? 0;
     const ay = a.ay[frame] ?? 0;
     const flip = sx < 0;
@@ -67,11 +68,11 @@ export class CanvasRenderer implements Renderer {
       this.ctx.save();
       this.ctx.translate(this.snap(x), 0);
       this.ctx.scale(-1, 1);
-      this.ctx.drawImage(a.image, a.x[frame] ?? 0, a.y[frame] ?? 0, w, h, -ax * asx, dy, dw, dh);
+      this.ctx.drawImage(image, a.x[frame] ?? 0, a.y[frame] ?? 0, w, h, -ax * asx, dy, dw, dh);
       this.ctx.restore();
     } else {
       this.ctx.drawImage(
-        a.image,
+        image,
         a.x[frame] ?? 0,
         a.y[frame] ?? 0,
         w,
@@ -89,13 +90,15 @@ export class CanvasRenderer implements Renderer {
     let p = this.patterns.get(frame);
     if (!p) {
       const a = this.atlas;
+      const image = a.imageOf(frame);
+      if (!image) return null;
       const c = document.createElement("canvas");
       c.width = a.w[frame] ?? 1;
       c.height = a.h[frame] ?? 1;
       const cctx = c.getContext("2d");
       if (!cctx) return null;
       cctx.drawImage(
-        a.image,
+        image,
         a.x[frame] ?? 0,
         a.y[frame] ?? 0,
         c.width,

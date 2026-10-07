@@ -42,6 +42,17 @@ export const box = (w: number, h: number, d: number, spec: MatSpec): THREE.Mesh 
 export const cyl = (rTop: number, rBottom: number, h: number, seg: number, spec: MatSpec): THREE.Mesh =>
   mesh(new THREE.CylinderGeometry(rTop, rBottom, h, seg), spec);
 
+/** Сектор цилиндра: полы жилета и т.п. Угол 0 смотрит на камеру (+z). */
+export const cylArc = (
+  rTop: number,
+  rBottom: number,
+  h: number,
+  seg: number,
+  spec: MatSpec,
+  start: number,
+  length: number,
+): THREE.Mesh => mesh(new THREE.CylinderGeometry(rTop, rBottom, h, seg, 1, false, start, length), spec);
+
 export const ball = (r: number, detail: number, spec: MatSpec): THREE.Mesh =>
   mesh(new THREE.IcosahedronGeometry(r, detail), spec);
 

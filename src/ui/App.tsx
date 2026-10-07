@@ -19,6 +19,7 @@ function Icon({ atlas, frame, size }: { atlas: Atlas; frame: string; size: numbe
   const w = atlas.w[i] ?? 1;
   const h = atlas.h[i] ?? 1;
   const k = size / Math.max(w, h);
+  const image = atlas.imageOf(i);
   return (
     <span
       class="atlas-icon"
@@ -26,9 +27,11 @@ function Icon({ atlas, frame, size }: { atlas: Atlas; frame: string; size: numbe
       style={{
         width: `${w * k}px`,
         height: `${h * k}px`,
-        backgroundImage: `url(${atlas.image.src})`,
-        backgroundPosition: `${-(atlas.x[i] ?? 0) * k}px ${-(atlas.y[i] ?? 0) * k}px`,
-        backgroundSize: `${atlas.image.naturalWidth * k}px ${atlas.image.naturalHeight * k}px`,
+        ...(image && {
+          backgroundImage: `url(${image.src})`,
+          backgroundPosition: `${-(atlas.x[i] ?? 0) * k}px ${-(atlas.y[i] ?? 0) * k}px`,
+          backgroundSize: `${image.naturalWidth * k}px ${image.naturalHeight * k}px`,
+        }),
       }}
     />
   );

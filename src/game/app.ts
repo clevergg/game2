@@ -5,6 +5,8 @@
 import { render, h } from "preact";
 import atlasJson from "../../assets/atlas.json";
 import atlasUrl from "../../assets/atlas.png";
+import atlasUrl1 from "../../assets/atlas-1.png";
+import atlasUrl2 from "../../assets/atlas-2.png";
 import { BALANCE } from "../data/balance";
 import { MAX_RANK } from "../data/ranks";
 import { currentHireCost, hire, move, tap, trash } from "../core/commands";
@@ -54,7 +56,7 @@ export async function startGame(
   audio.setMuted(platform.getPref("muted") === "1");
 
   const [atlas, state] = await Promise.all([
-    loadAtlas(atlasUrl, atlasJson as AtlasJson),
+    loadAtlas([atlasUrl, atlasUrl1, atlasUrl2], atlasJson as AtlasJson),
     loadState(platform),
   ]);
   const renderer = new CanvasRenderer(canvas, atlas);
@@ -64,8 +66,8 @@ export async function startGame(
   const queue = new EventQueue(256);
   const ui = new Store<UiState>({ ...INITIAL_UI, muted: audio.isMuted });
 
-  const deskIdx = atlas.frame("desk");
-  const charIdx = atlas.frame("b5_idle_0");
+  const deskIdx = atlas.frame("f0_desk");
+  const charIdx = atlas.frame("f0_b5_idle_0");
   const metrics = {
     deskW: atlas.w[deskIdx] ?? 129,
     deskTop: atlas.ay[deskIdx] ?? 91,

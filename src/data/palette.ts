@@ -32,6 +32,16 @@ export const RAMPS = {
   burgundy: ["#d2748a", "#a6465f", "#74293f", "#461627"],
   gold: ["#fff0a0", "#ffd048", "#d19a1e", "#8a5e0e"],
   lime: ["#d6ff7a", "#9ed838", "#5e9a1e", "#37600f"],
+  // Фаза 6: Склад и Конторка дизайнеров. Новые рампы — только в конец, чтобы не сдвигать индексы атласа
+  orange: ["#ffb36b", "#f07f2a", "#b5561a", "#6e3210"],
+  hazard: ["#fff27a", "#f2d22e", "#b89a14", "#6e5c0a"],
+  concrete: ["#cfccc3", "#aeaa9f", "#8a867d", "#605d56"],
+  denim: ["#8fb3d9", "#5f86b5", "#3f5f88", "#273c59"],
+  pink: ["#ffc2d6", "#f58fb3", "#c45d86", "#7d3654"],
+  purple: ["#c7a3ff", "#9a6fe0", "#6a46a8", "#3f2868"],
+  mint: ["#c8f5e1", "#8fdcbc", "#5aa88a", "#346650"],
+  birch: ["#f3dcb2", "#dcbb86", "#b38f5c", "#7a5c36"],
+  studio: ["#f8f7f4", "#e3e1db", "#c2bfb6", "#8e8b83"],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;

@@ -53,19 +53,15 @@ const decode = (b64: string): Uint8Array => new Uint8Array(Buffer.from(b64, "bas
 await mkdir(OUT_ASSETS, { recursive: true });
 await mkdir(OUT_DOCS, { recursive: true });
 
-const atlasPng = encodeIndexedPng({
-  width: result.atlas.w,
-  height: result.atlas.h,
-  data: decode(result.atlas.b64),
-  palette,
-  transparentIndex: 0,
-});
-await writeFile(join(OUT_ASSETS, "atlas.png"), atlasPng);
+// Лист 0 — atlas.png (общий + Бухгалтерия), листы этажей — atlas-1.png, atlas-2.png
+const sheetName = (i: number): string => (i === 0 ? "atlas.png" : `atlas-${i}.png`);
+const atlasPngs = result.atlases.map((a) =>
+  encodeIndexedPng({ width: a.w, height: a.h, data: decode(a.b64), palette, transparentIndex: 0 }),
+);
+for (const [i, png] of atlasPngs.entries()) await writeFile(join(OUT_ASSETS, sheetName(i)), png);
 
 const atlasJson = JSON.stringify({
-  image: "atlas.png",
-  w: result.atlas.w,
-  h: result.atlas.h,
+  sheets: result.atlases.map((a, i) => ({ image: sheetName(i), w: a.w, h: a.h })),
   ppu: result.ppu,
   frames: result.frames,
   anims: result.anims,
@@ -100,11 +96,22 @@ const officePng = encodeApng({
 });
 await writeFile(join(OUT_DOCS, "phase4-office.png"), officePng);
 
+for (const [name, img] of [
+  ["phase6-floors.png", result.floors],
+  ["phase6-cast.png", result.cast],
+] as const) {
+  const png = encodeIndexedPng({ width: img.w, height: img.h, data: decode(img.b64), palette, transparentIndex: 0 });
+  await writeFile(join(OUT_DOCS, name), png);
+}
+
 const kb = (n: number): string => (n / 1024).toFixed(1).padStart(7) + " КБ";
 const gz = (b: Uint8Array<ArrayBuffer> | string): number => Bun.gzipSync(typeof b === "string" ? new TextEncoder().encode(b) : b).byteLength;
 console.log(`Кадров: ${result.stats.frameCount}, рендер ${result.stats.renderMs} мс`);
-console.log(`Атлас ${result.atlas.w}×${result.atlas.h}, палитра ${palette.length} цветов`);
-console.log(`assets/atlas.png  ${kb(atlasPng.byteLength)}   (gzip ${kb(gz(atlasPng))})`);
+console.log(`Палитра ${palette.length} цветов`);
+for (const [i, png] of atlasPngs.entries()) {
+  const a = result.atlases[i];
+  console.log(`assets/${sheetName(i).padEnd(12)} ${a?.w}×${a?.h} ${kb(png.byteLength)}   (gzip ${kb(gz(png))})`);
+}
 console.log(`assets/atlas.json ${kb(atlasJson.length)}   (gzip ${kb(gz(atlasJson))})`);
 console.log(`docs/img/phase4-sheet.png  ${kb(sheetPng.byteLength)}`);
 console.log(`docs/img/phase4-office.png ${kb(officePng.byteLength)} (APNG, ${result.office.frames.length} кадров)`);

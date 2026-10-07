@@ -74,11 +74,11 @@ async function readSave(page: Page): Promise<Saved> {
 function layoutFor(page: Page): Layout {
   const vp = page.viewportSize();
   if (!vp) throw new Error("нет viewport");
-  const desk = atlas.frames.desk;
+  const desk = atlas.frames.f0_desk;
   return computeLayout(vp.width, vp.height, BALANCE.desksStart, BALANCE.desksMax, {
     deskW: desk[2] ?? 129,
     deskTop: desk[5] ?? 91,
-    charTop: atlas.frames.b5_idle_0[5] ?? 150,
+    charTop: atlas.frames.f0_b5_idle_0[5] ?? 150,
   });
 }
 

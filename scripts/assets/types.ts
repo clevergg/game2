@@ -6,8 +6,8 @@ export interface GenImage {
   readonly b64: string;
 }
 
-/** Кадр в атласе: x, y, w, h, ax, ay (якорь внутри кадра, в пикселях). */
-export type FrameRect = readonly [number, number, number, number, number, number];
+/** Кадр в атласе: x, y, w, h, ax, ay (якорь внутри кадра, в пикселях), номер листа. */
+export type FrameRect = readonly [number, number, number, number, number, number, number];
 
 export interface AnimMeta {
   readonly frames: readonly string[];
@@ -16,7 +16,8 @@ export interface AnimMeta {
 }
 
 export interface GenResult {
-  readonly atlas: GenImage;
+  /** Листы атласа: 0 — общий + этаж 1, дальше — по этажу на лист. */
+  readonly atlases: readonly GenImage[];
   readonly ppu: number;
   readonly frames: Record<string, FrameRect>;
   readonly anims: Record<string, AnimMeta>;
@@ -24,5 +25,8 @@ export interface GenResult {
   /** Раскадровка анимаций для проверки поз. */
   readonly animSheet: GenImage;
   readonly office: { readonly w: number; readonly h: number; readonly frames: readonly string[]; readonly delayMs: number };
+  /** Три этажа рядом и NPC с иконками — превью Фазы 6. */
+  readonly floors: GenImage;
+  readonly cast: GenImage;
   readonly stats: { readonly renderMs: number; readonly frameCount: number };
 }

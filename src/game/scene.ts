@@ -4,6 +4,7 @@
  * («какой стол под пальцем?»). Состояние игры сцена только читает.
  */
 import { BALANCE } from "../data/balance";
+import { FLOOR_COUNT } from "../data/floors";
 import { MAX_RANK } from "../data/ranks";
 import { EV } from "../core/events";
 import type { FloorState, OfficeState } from "../core/state";
@@ -26,15 +27,16 @@ export interface SceneSignals {
 }
 
 export class OfficeScene {
-  private readonly deskFrame: number;
-  private readonly lockedFrame: number;
+  /** Кадры мебели и пола по этажам. */
+  private readonly deskFrames = new Int16Array(FLOOR_COUNT);
+  private readonly lockedFrames = new Int16Array(FLOOR_COUNT);
+  private readonly floorFrames = new Int16Array(FLOOR_COUNT);
+  private readonly wallFrames = new Int16Array(FLOOR_COUNT);
   private readonly slopFrame: number;
-  private readonly floorFrame: number;
-  private readonly wallFrame: number;
   private readonly kukishFrame: number;
   private readonly greenDigits: Int16Array;
-  /** anims[rank][ANIM.*] */
-  private readonly anims: Anim[][] = [];
+  /** anims[этаж][ранг][ANIM.*] */
+  private readonly anims: Anim[][][] = [];
 
   private readonly anim: Uint8Array;
   private readonly animT: Float32Array;
@@ -57,7 +59,7 @@ export class OfficeScene {
   private seed = 12345;
 
   constructor(
-    atlas: Atlas,
+    private readonly atlas: Atlas,
     private readonly r: Renderer,
     private readonly particles: Particles,
     private readonly numbers: FloatingNumbers,
@@ -66,18 +68,23 @@ export class OfficeScene {
     private layout: Layout,
     private readonly signals: SceneSignals,
   ) {
-    this.deskFrame = atlas.frame("desk");
-    this.lockedFrame = atlas.frame("desk_locked");
+    for (let fi = 0; fi < FLOOR_COUNT; fi++) {
+      const p = `f${fi}_`;
+      this.deskFrames[fi] = atlas.frame(`${p}desk`);
+      this.lockedFrames[fi] = atlas.frame(`${p}desk_locked`);
+      this.floorFrames[fi] = atlas.frame(`${p}floor`);
+      this.wallFrames[fi] = atlas.frame(`${p}wall`);
+      const ranks: Anim[][] = [];
+      for (let rank = 0; rank <= MAX_RANK; rank++) {
+        ranks.push(rank === 0 ? [] : ANIM_NAMES.map((a) => atlas.anim(`${p}b${rank}_${a}`)));
+      }
+      this.anims.push(ranks);
+    }
     this.slopFrame = atlas.frame("slop");
-    this.floorFrame = atlas.frame("floor_carpet");
-    this.wallFrame = atlas.frame("wall_panel");
     this.kukishFrame = atlas.frame("kukish");
     this.greenDigits = Int16Array.from({ length: 10 }, (_, d) =>
       atlas.frame(`font_green_${(48 + d).toString(16)}`),
     );
-    for (let rank = 0; rank <= MAX_RANK; rank++) {
-      this.anims.push(rank === 0 ? [] : ANIM_NAMES.map((a) => atlas.anim(`b${rank}_${a}`)));
-    }
     const n = BALANCE.desksMax;
     this.anim = new Uint8Array(n).fill(ANIM.work);
     this.animT = new Float32Array(n);
@@ -257,9 +264,12 @@ export class OfficeScene {
     const sx = this.shake > 0 ? (this.rand() - 0.5) * this.shake : 0;
     const sy = this.shake > 0 ? (this.rand() - 0.5) * this.shake : 0;
     r.begin(sx, sy);
-    r.tile(this.floorFrame, -8, -8, L.w + 16, L.h + 16, s);
+    const fi = this.floor;
+    r.tile(this.floorFrames[fi] ?? 0, -8, -8, L.w + 16, L.h + 16, s);
     const wallH = 96 * s;
-    r.tile(this.wallFrame, -8, 64 + 24 * s - wallH, L.w + 16, wallH, s);
+    r.tile(this.wallFrames[fi] ?? 0, -8, 64 + 24 * s - wallH, L.w + 16, wallH, s);
+    const deskFrame = this.deskFrames[fi] ?? 0;
+    const anims = this.anims[fi] ?? [];
 
     const st = this.fs;
     const cols = L.cols;
@@ -268,7 +278,7 @@ export class OfficeScene {
       const x = L.deskX[i] ?? 0;
       const y = L.deskY[i] ?? 0;
       if (i >= st.deskCount) {
-        r.sprite(this.lockedFrame, x, y, s, s, 1);
+        r.sprite(this.lockedFrames[fi] ?? 0, x, y, s, s, 1);
         continue;
       }
       if (this.dragFrom >= 0 && i === this.dragTarget) {
@@ -276,10 +286,10 @@ export class OfficeScene {
         const pulse = 0.45 + 0.25 * Math.sin(this.time * 10);
         r.ellipse(x, y - 4 * s, 70 * s, 26 * s, mergeable ? "#ffd048" : "#fffaf0", pulse);
       }
-      r.sprite(this.deskFrame, x, y, s, s, 1);
+      r.sprite(deskFrame, x, y, s, s, 1);
       const rank = st.desks[i] ?? 0;
       if (rank === 0 || i === this.dragFrom) continue;
-      const a = this.anims[rank]?.[this.anim[i] ?? ANIM.work];
+      const a = anims[rank]?.[this.anim[i] ?? ANIM.work];
       if (!a) continue;
       const ps = this.popScale(i);
       const sq = this.squash[i] ?? 0;
@@ -323,7 +333,7 @@ export class OfficeScene {
 
     if (this.dragFrom >= 0) {
       const rank = st.desks[this.dragFrom] ?? 0;
-      const a = this.anims[rank]?.[ANIM.idle];
+      const a = anims[rank]?.[ANIM.idle];
       if (a) {
         r.ellipse(this.dragX, this.dragY + 30 * s, 36 * s, 12 * s, "#1c1620", 0.3);
         r.sprite(
@@ -393,6 +403,11 @@ export class OfficeScene {
     this.dragTarget = -1;
     this.dragOverSlop = false;
     return res;
+  }
+
+  /** Загружен ли лист атласа с этажом на экране (листы этажей грузятся лениво). */
+  get floorReady(): boolean {
+    return this.atlas.isLoaded(this.atlas.sheet[this.deskFrames[this.floor] ?? 0] ?? 0);
   }
 
   get dragging(): boolean {

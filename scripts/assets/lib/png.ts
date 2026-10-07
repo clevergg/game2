@@ -1,5 +1,6 @@
 /**
- * Кодировщик PNG с палитрой (8 бит на пиксель) и анимированного APNG.
+ * Кодировщик PNG с палитрой (8 бит на пиксель), анимированного APNG и полноцветного RGB
+ * (24 бит — для промо-материалов: иконки, обложки).
  * Палитровый PNG для нашей графики в разы меньше полноцветного:
  * пиксель — один байт-индекс вместо четырёх байт RGBA.
  */
@@ -100,6 +101,31 @@ export function encodeIndexedPng(img: IndexedPngInput): Uint8Array<ArrayBuffer> 
     ihdr(img.width, img.height),
     ...paletteChunks(img.palette, img.transparentIndex),
     chunk("IDAT", idat),
+    chunk("IEND", new Uint8Array(0)),
+  ]);
+}
+
+/** Полноцветный 24-битный PNG без альфы из RGBA (альфа отбрасывается — фон должен быть непрозрачным). */
+export function encodeRgbPng(width: number, height: number, rgba: Uint8Array): Uint8Array<ArrayBuffer> {
+  if (rgba.length !== width * height * 4) throw new RangeError("Размер RGBA не совпадает с изображением");
+  const row = width * 3 + 1;
+  const raw = new Uint8Array(row * height);
+  for (let y = 0; y < height; y++) {
+    // Фильтр Sub: разница с левым пикселем — хорошо жмёт гладкие градиенты
+    raw[y * row] = 1;
+    for (let x = 0; x < width; x++) {
+      for (let c = 0; c < 3; c++) {
+        const v = rgba[(y * width + x) * 4 + c] ?? 0;
+        const left = x > 0 ? (rgba[(y * width + x - 1) * 4 + c] ?? 0) : 0;
+        raw[y * row + 1 + x * 3 + c] = (v - left) & 255;
+      }
+    }
+  }
+  const header = concat([u32(width), u32(height), new Uint8Array([8, 2, 0, 0, 0])]);
+  return concat([
+    SIGNATURE,
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw, { level: 9 })),
     chunk("IEND", new Uint8Array(0)),
   ]);
 }

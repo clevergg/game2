@@ -18,7 +18,8 @@
     "smoke": "bun run build && bun scripts/smoke.ts && bun scripts/smoke-sdk.ts",
     "smoke:sdk": "bun run build && bun scripts/smoke-sdk.ts",
     "balance": "bun scripts/balance/run.ts",
-    "pack": "bun run build && bun scripts/pack/run.ts"
+    "pack": "bun run build && bun scripts/pack/run.ts",
+    "promo": "bun run build && bun scripts/promo.ts"
   },
   "budget": {
     "totalGzipKB": 2500

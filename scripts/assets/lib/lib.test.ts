@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { FONT_CHARS, glyphFrameName, glyphImage } from "./font";
 import { packShelves } from "./pack";
-import { crc32, decodeIndexedPng, encodeApng, encodeIndexedPng, hexToRgb, type Rgb } from "./png";
+import { crc32, decodeIndexedPng, encodeApng, encodeIndexedPng, encodeRgbPng, hexToRgb, type Rgb } from "./png";
 import { addOutline, blit, createImage, flipX, scaleNearest, trim } from "./raster";
 import { bayer, shadeLevel } from "./shade";
 
@@ -153,5 +153,17 @@ describe("font", () => {
 
   test("имя кадра не зависит от кириллицы", () => {
     expect(glyphFrameName("gold", "т")).toBe("font_gold_442");
+  });
+});
+
+describe("RGB PNG для промо", () => {
+  test("IHDR: 24 бита (тип цвета 2), данные распаковываются в строки с фильтром", () => {
+    const rgba = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 9, 9, 9, 255]);
+    const png = encodeRgbPng(2, 2, rgba);
+    expect(Array.from(png.subarray(1, 4))).toEqual([80, 78, 71]);
+    // IHDR начинается после сигнатуры (8) + длины (4) + типа (4)
+    expect(png[16 + 8]).toBe(8);
+    expect(png[16 + 9]).toBe(2);
+    expect(() => encodeRgbPng(3, 3, rgba)).toThrow();
   });
 });

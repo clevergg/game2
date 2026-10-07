@@ -3,24 +3,38 @@
  * события пишутся в типизированные массивы, в игровом цикле объекты не создаются.
  */
 export const EV = {
-  /** a — стол, value — сколько кукишей выплачено. */
+  /** f, a — стол, b — ранг, value — сколько выплачено. */
   payout: 1,
-  /** a — стол, value — кукиши за тап. */
+  /** f, a — стол, value — кукиши за тап. */
   tap: 2,
-  /** a — стол, b — ранг, value — цена. */
+  /** f, a — стол, b — ранг, value — цена. */
   hired: 3,
-  /** a — стол-результат, b — новый ранг. */
+  /** f, a — стол-результат, b — новый ранг. */
   merged: 4,
-  /** a — откуда, b — куда. */
+  /** f, a — откуда, b — куда. */
   moved: 5,
-  /** a, b — столы, которые поменялись. */
+  /** f, a, b — столы, которые поменялись. */
   swapped: 6,
-  /** a — стол, value — возврат кукишей. */
+  /** f, a — стол, b — ранг, value — возврат. */
   trashed: 7,
-  /** b — ранг, открытый впервые. */
+  /** f, b — ранг, впервые открытый на этаже. */
   rankUnlocked: 8,
   /** b — причина из DENY. */
   denied: 9,
+  /** f, a — стол, b — ранг: появился премированный батракан. */
+  rareAppeared: 10,
+  /** f, b — новый уровень квалификации. */
+  qualBought: 11,
+  /** f, b — новый уровень оснащения. */
+  equipBought: 12,
+  /** f, b — новое число столов. */
+  deskBought: 13,
+  /** f — открытый этаж. */
+  floorUnlocked: 14,
+  /** b — сколько выслуги получено. */
+  reorganized: 15,
+  /** a — индекс перка, b — новый уровень. */
+  perkBought: 16,
 } as const;
 
 export type EvKind = (typeof EV)[keyof typeof EV];
@@ -29,12 +43,15 @@ export const DENY = {
   noMoney: 1,
   noSpace: 2,
   invalid: 3,
+  maxed: 4,
+  locked: 5,
 } as const;
 
 export type DenyReason = (typeof DENY)[keyof typeof DENY];
 
 export class EventQueue {
   readonly kind: Uint8Array;
+  readonly f: Int8Array;
   readonly a: Int16Array;
   readonly b: Int16Array;
   readonly value: Float64Array;
@@ -44,6 +61,7 @@ export class EventQueue {
 
   constructor(readonly capacity = 256) {
     this.kind = new Uint8Array(capacity);
+    this.f = new Int8Array(capacity);
     this.a = new Int16Array(capacity);
     this.b = new Int16Array(capacity);
     this.value = new Float64Array(capacity);
@@ -53,13 +71,14 @@ export class EventQueue {
     return this.count;
   }
 
-  push(kind: EvKind, a = 0, b = 0, value = 0): void {
+  push(kind: EvKind, f = 0, a = 0, b = 0, value = 0): void {
     if (this.count >= this.capacity) {
       this.dropped++;
       return;
     }
     const i = this.count++;
     this.kind[i] = kind;
+    this.f[i] = f;
     this.a[i] = a;
     this.b[i] = b;
     this.value[i] = value;

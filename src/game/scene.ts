@@ -6,7 +6,7 @@
 import { BALANCE } from "../data/balance";
 import { MAX_RANK } from "../data/ranks";
 import { EV } from "../core/events";
-import type { OfficeState } from "../core/state";
+import type { FloorState, OfficeState } from "../core/state";
 import { type Anim, Atlas } from "../engine/atlas";
 import type { AudioPlayer } from "../engine/audio/player";
 import type { FloatingNumbers, Particles } from "../engine/particles";
@@ -52,6 +52,8 @@ export class OfficeScene {
   private slopBounce = 0;
   private rankUpDelay = -1;
   private time = 0;
+  /** Этаж, который сейчас на экране. */
+  floor = 0;
   private seed = 12345;
 
   constructor(
@@ -89,6 +91,12 @@ export class OfficeScene {
     }
   }
 
+  private get fs(): FloorState {
+    const f = this.state.floors[this.floor] ?? this.state.floors[0];
+    if (!f) throw new Error("Нет этажей");
+    return f;
+  }
+
   setLayout(l: Layout): void {
     this.layout = l;
   }
@@ -109,7 +117,9 @@ export class OfficeScene {
     return (this.layout.deskY[desk] ?? 0) - 150 * this.layout.scale;
   }
 
-  onEvent(kind: number, a: number, b: number, value: number): void {
+  onEvent(kind: number, f: number, a: number, b: number, value: number): void {
+    // События чужого этажа не рисуем: игрок их не видит (кроме общих — открытие ранга, отказ)
+    if (f !== this.floor && kind !== EV.rankUnlocked && kind !== EV.denied) return;
     const L = this.layout;
     const s = L.scale;
     const x = L.deskX[a] ?? 0;
@@ -208,7 +218,7 @@ export class OfficeScene {
   /** Визуальные таймеры — в частоте кадров, чтобы анимации были плавными. */
   update(dt: number): void {
     this.time += dt;
-    const n = this.state.deskCount;
+    const n = this.fs.deskCount;
     for (let i = 0; i < n; i++) {
       this.animT[i] = (this.animT[i] ?? 0) + dt;
       const left = (this.animLeft[i] ?? 0) - dt;
@@ -251,7 +261,7 @@ export class OfficeScene {
     const wallH = 96 * s;
     r.tile(this.wallFrame, -8, 64 + 24 * s - wallH, L.w + 16, wallH, s);
 
-    const st = this.state;
+    const st = this.fs;
     const cols = L.cols;
     const total = L.rows * cols;
     for (let i = 0; i < total && i < BALANCE.desksMax; i++) {
@@ -334,8 +344,8 @@ export class OfficeScene {
   hitDesk(x: number, y: number): number {
     const L = this.layout;
     const s = L.scale;
-    for (let i = this.state.deskCount - 1; i >= 0; i--) {
-      if ((this.state.desks[i] ?? 0) === 0) continue;
+    for (let i = this.fs.deskCount - 1; i >= 0; i--) {
+      if ((this.fs.desks[i] ?? 0) === 0) continue;
       const dx = x - (L.deskX[i] ?? 0);
       const dy = y - (L.deskY[i] ?? 0);
       if (Math.abs(dx) <= 58 * s && dy <= 12 * s && dy >= -165 * s) return i;
@@ -349,7 +359,7 @@ export class OfficeScene {
     const s = L.scale;
     let best = -1;
     let bestD = 80 * s;
-    for (let i = 0; i < this.state.deskCount; i++) {
+    for (let i = 0; i < this.fs.deskCount; i++) {
       const d = Math.hypot(x - (L.deskX[i] ?? 0), y + 40 * s - ((L.deskY[i] ?? 0) - 40 * s));
       if (d < bestD) {
         bestD = d;

@@ -42,6 +42,12 @@ interface Saved {
   maxRank: number;
 }
 
+interface SaveV2 {
+  floors: { desks: number[] }[];
+  kukishi: number;
+  cards: number[];
+}
+
 const errors: string[] = [];
 const result = { failed: false };
 const check = (ok: boolean, what: string): void => {
@@ -49,13 +55,20 @@ const check = (ok: boolean, what: string): void => {
   if (!ok) result.failed = true;
 };
 
+/** Сохранение v2 → то, что проверяет смоук: столы первого этажа, кукиши, максимальный достигнутый ранг. */
 async function readSave(page: Page): Promise<Saved> {
-  return page.evaluate(() => {
+  const raw = await page.evaluate(() => {
     window.dispatchEvent(new Event("pagehide"));
-    const raw = localStorage.getItem("kontorka.save");
-    if (!raw) throw new Error("нет сохранения");
-    return JSON.parse(raw) as Saved;
+    const text = localStorage.getItem("kontorka.save");
+    if (!text) throw new Error("нет сохранения");
+    return JSON.parse(text) as SaveV2;
   });
+  const cards = raw.cards[0] ?? 0;
+  return {
+    desks: raw.floors[0]?.desks ?? [],
+    kukishi: raw.kukishi,
+    maxRank: 32 - Math.clz32(cards),
+  };
 }
 
 function layoutFor(page: Page): Layout {
@@ -141,8 +154,8 @@ try {
   check(s.maxRank === 2 && s.desks.includes(2), "слияние: стажёры стали батраканом (ранг 2)");
   check((await page.locator(".toast").count()) > 0, "тост «Новый ранг» показан");
 
-  // 4. Играем дальше: копим, нанимаем, сливаем пары, пока не дойдём до ранга 4
-  for (let round = 0; round < 60 && s.maxRank < 4; round++) {
+  // 4. Играем дальше: копим, нанимаем, сливаем пары. Темп проверяет тест баланса, здесь — что цикл работает
+  for (let round = 0; round < 60 && s.maxRank < 3; round++) {
     for (let i = 0; i < 6; i++) {
       const d = s.desks.findIndex((r) => r > 0);
       await page.touchscreen.tap(...body(L, d));
@@ -164,7 +177,7 @@ try {
       byRank.set(r, i);
     }
   }
-  check(s.maxRank >= 4, `цикл «копи → найми → слей» доводит до ранга ${s.maxRank}`);
+  check(s.maxRank >= 3, `цикл «копи → найми → слей» доводит до ранга ${s.maxRank}`);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(SHOTS, "phase5-4-progress.png"), scale: "css" });
 

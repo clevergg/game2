@@ -11,7 +11,7 @@ import { currentHireCost, hire, move, tap, trash } from "../core/commands";
 import { EV, EventQueue } from "../core/events";
 import { fromSave, toSave } from "../core/save";
 import { step } from "../core/sim";
-import { createState, firstFreeDesk, type OfficeState } from "../core/state";
+import { createState, firstFreeDesk, type FloorState, type OfficeState } from "../core/state";
 import { type AtlasJson, loadAtlas } from "../engine/atlas";
 import { AudioPlayer } from "../engine/audio/player";
 import { attachInput } from "../engine/input";
@@ -71,11 +71,13 @@ export async function startGame(
     deskTop: atlas.ay[deskIdx] ?? 91,
     charTop: atlas.ay[charIdx] ?? 150,
   };
+  /** Этаж на экране; лифт переключает его (Фаза 6.6). */
+  const viewFloor = 0;
   const makeLayout = (): Layout =>
     computeLayout(
       canvas.clientWidth,
       canvas.clientHeight,
-      state.deskCount,
+      floorOf(state, viewFloor).deskCount,
       BALANCE.desksMax,
       metrics,
     );
@@ -128,7 +130,7 @@ export async function startGame(
     tap: (x: number, y: number) => {
       audio.unlock();
       const desk = scene.hitDesk(x, y);
-      if (desk >= 0 && tap(state, desk, queue) === 0) {
+      if (desk >= 0 && tap(state, scene.floor, desk, queue) === 0) {
         facts.taps++;
         advanceTutorial();
       }
@@ -148,8 +150,8 @@ export async function startGame(
       scene.moveDrag(x, y);
       const { from, to } = scene.endDrag();
       ui.set({ dragging: false });
-      if (to === -2) trash(state, from, queue);
-      else if (to >= 0) move(state, from, to, queue);
+      if (to === -2) trash(state, scene.floor, from, queue);
+      else if (to >= 0) move(state, scene.floor, from, to, queue);
     },
     dragCancel: () => {
       scene.endDrag();
@@ -163,15 +165,16 @@ export async function startGame(
     audio.unlock();
     // Десктоп: пробел колупает случайного батракана
     const busy: number[] = [];
-    for (let i = 0; i < state.deskCount; i++) if ((state.desks[i] ?? 0) > 0) busy.push(i);
+    const fl = floorOf(state, scene.floor);
+    for (let i = 0; i < fl.deskCount; i++) if ((fl.desks[i] ?? 0) > 0) busy.push(i);
     const desk = busy[Math.floor(Math.random() * busy.length)];
-    if (desk !== undefined && tap(state, desk, queue) === 0) facts.taps++;
+    if (desk !== undefined && tap(state, scene.floor, desk, queue) === 0) facts.taps++;
   });
 
   const actions = {
     hire: () => {
       audio.unlock();
-      if (hire(state, queue) === 0) {
+      if (hire(state, scene.floor, queue) === 0) {
         facts.hires++;
         advanceTutorial();
       }
@@ -195,13 +198,13 @@ export async function startGame(
     let hintY = 0;
     if (stage === TUTORIAL.tap) {
       hint = "tap";
-      const d = state.desks.findIndex((r) => r > 0);
+      const d = floorOf(state, scene.floor).desks.findIndex((r) => r > 0);
       hintX = L.deskX[d] ?? 0;
       hintY = Math.max(HUD_TOP + 52, (L.deskY[d] ?? 0) - 158 * L.scale);
     } else if (stage === TUTORIAL.hire) {
-      if (state.kukishi >= currentHireCost(state)) hint = "hire";
+      if (state.kukishi >= currentHireCost(state, scene.floor)) hint = "hire";
     } else if (stage === TUTORIAL.merge) {
-      const pair = findPair(state);
+      const pair = findPair(floorOf(state, scene.floor));
       if (pair) {
         hint = "merge";
         hintX = ((L.deskX[pair[0]] ?? 0) + (L.deskX[pair[1]] ?? 0)) / 2;
@@ -211,13 +214,13 @@ export async function startGame(
         );
       }
     }
-    const cost = currentHireCost(state);
+    const cost = currentHireCost(state, scene.floor);
     ui.set({
       kukishi: Math.floor(state.kukishi),
       income: state.incomePerSec,
       hireCost: cost,
-      hasSpace: firstFreeDesk(state) >= 0,
-      canHire: firstFreeDesk(state) >= 0 && state.kukishi >= cost,
+      hasSpace: firstFreeDesk(state, scene.floor) >= 0,
+      canHire: firstFreeDesk(state, scene.floor) >= 0 && state.kukishi >= cost,
       hint,
       hintX,
       hintY,
@@ -229,7 +232,7 @@ export async function startGame(
       step(state, dt, queue);
       for (let i = 0; i < queue.length; i++) {
         const kind = queue.kind[i] ?? 0;
-        scene.onEvent(kind, queue.a[i] ?? 0, queue.b[i] ?? 0, queue.value[i] ?? 0);
+        scene.onEvent(kind, queue.f[i] ?? 0, queue.a[i] ?? 0, queue.b[i] ?? 0, queue.value[i] ?? 0);
         if (kind === EV.merged) {
           facts.merges++;
           advanceTutorial();
@@ -271,7 +274,13 @@ export async function startGame(
 }
 
 /** Два батракана одного ранга (не максимального) — для подсказки «перетащи одного на другого». */
-function findPair(s: OfficeState): [number, number] | null {
+function floorOf(s: OfficeState, fi: number): FloorState {
+  const f = s.floors[fi] ?? s.floors[0];
+  if (!f) throw new Error("Нет этажей");
+  return f;
+}
+
+function findPair(s: FloorState): [number, number] | null {
   for (let i = 0; i < s.deskCount; i++) {
     const r = s.desks[i] ?? 0;
     if (r === 0) continue;

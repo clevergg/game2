@@ -14,7 +14,8 @@
     "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build && bun run size",
     "assets": "bun scripts/assets/build.ts",
     "audio:preview": "bun scripts/assets/audio-preview.ts",
-    "smoke": "bun run build && bun scripts/smoke.ts"
+    "smoke": "bun run build && bun scripts/smoke.ts",
+    "balance": "bun scripts/balance/run.ts"
   },
   "budget": {
     "totalGzipKB": 2500

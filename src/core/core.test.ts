@@ -1,167 +1,329 @@
 import { describe, expect, test } from "bun:test";
 import { BALANCE } from "../data/balance";
+import { FLOOR_COUNT } from "../data/floors";
+import { PERKS, perkIndex } from "../data/perks";
 import { MAX_RANK } from "../data/ranks";
-import { currentHireCost, hire, move, tap, trash } from "./commands";
-import { hireCost, hireLevel, incomeOf, tapValue, trashRefund } from "./economy";
+import {
+  buyDesk,
+  buyEquip,
+  buyPerk,
+  buyQual,
+  currentHireCost,
+  hire,
+  hireFree,
+  move,
+  reorganize,
+  reorgGain,
+  tap,
+  trash,
+  unlockFloor,
+} from "./commands";
+import {
+  deskCost,
+  earnedForGain,
+  equipCost,
+  floorUnlockCost,
+  hireCost,
+  qualCost,
+  rankIncome,
+  seniorityGain,
+  tapValue,
+  trashRefund,
+} from "./economy";
 import { DENY, EV, EventQueue } from "./events";
 import { fromSave, toSave } from "./save";
-import { step } from "./sim";
+import { autoMergeOnce, step } from "./sim";
 import { createState, type OfficeState, recomputeIncome } from "./state";
 
-function kinds(q: EventQueue): number[] {
-  return Array.from(q.kind.subarray(0, q.length));
-}
+const kinds = (q: EventQueue): number[] => Array.from(q.kind.subarray(0, q.length));
 
-function withDesks(ranks: number[], kukishi = 0): OfficeState {
+function withDesks(ranks: number[], kukishi = 0, fi = 0): OfficeState {
   const s = createState();
-  s.desks.fill(0);
-  ranks.forEach((r, i) => (s.desks[i] = r));
-  s.maxRank = Math.max(1, ...ranks);
+  s.floorsUnlocked = Math.max(s.floorsUnlocked, fi + 1);
+  const f = s.floors[fi];
+  if (!f) throw new Error("нет этажа");
+  f.desks.fill(0);
+  ranks.forEach((r, i) => (f.desks[i] = r));
   s.kukishi = kukishi;
-  for (const r of ranks) if (r > 0) s.collection |= 1 << (r - 1);
   recomputeIncome(s);
   return s;
 }
 
-describe("economy — инварианты GDD §4.4", () => {
-  test("слияние всегда повышает доход: inc(r+1) > 2·inc(r)", () => {
-    for (let r = 1; r < MAX_RANK; r++) expect(incomeOf(r + 1)).toBeGreaterThan(2 * incomeOf(r));
-  });
-
-  test("цена найма монотонно растёт по числу нанятых и по уровню", () => {
-    for (let L = 1; L <= MAX_RANK; L++) {
-      for (let n = 0; n < 50; n++)
-        expect(hireCost(L, n + 1)).toBeGreaterThanOrEqual(hireCost(L, n));
-      if (L < MAX_RANK) expect(hireCost(L + 1, 0)).toBeGreaterThan(hireCost(L, 0));
+describe("economy — инварианты", () => {
+  test("слияние всегда выгодно: доход ранга r+1 больше двух рангов r", () => {
+    for (let f = 0; f < FLOOR_COUNT; f++) {
+      for (let r = 1; r < MAX_RANK; r++)
+        expect(rankIncome(f, r + 1)).toBeGreaterThan(2 * rankIncome(f, r));
     }
   });
 
-  test("уровень найма отстаёт от максимального ранга, но не ниже 1", () => {
-    expect(hireLevel(1)).toBe(1);
-    expect(hireLevel(4)).toBe(1);
-    expect(hireLevel(7)).toBe(7 - BALANCE.hireLag);
+  test("следующий этаж богаче и дороже предыдущего", () => {
+    for (let f = 1; f < FLOOR_COUNT; f++) {
+      expect(rankIncome(f, 1)).toBeGreaterThan(rankIncome(f - 1, MAX_RANK) / 100);
+      expect(rankIncome(f, 1)).toBeGreaterThan(rankIncome(f - 1, 1));
+      expect(floorUnlockCost(f)).toBeGreaterThan(floorUnlockCost(f - 1));
+    }
   });
 
-  test("тап приносит хотя бы 1 кукиш", () => {
+  test("цены монотонно растут", () => {
+    for (let f = 0; f < FLOOR_COUNT; f++) {
+      for (let n = 0; n < 300; n += 7)
+        expect(hireCost(f, 1, n + 1, 0)).toBeGreaterThanOrEqual(hireCost(f, 1, n, 0));
+      for (let k = 0; k < 6; k++) {
+        expect(qualCost(f, k + 2)).toBeGreaterThan(qualCost(f, k + 1));
+        expect(equipCost(f, k + 1)).toBeGreaterThan(equipCost(f, k));
+        expect(deskCost(f, k + 1)).toBeGreaterThan(deskCost(f, k));
+      }
+    }
+  });
+
+  test("найм ранга q стоит как 2^(q−1) найма ранга 1 при том же счётчике", () => {
+    expect(hireCost(0, 4, 0, 0)).toBe(hireCost(0, 1, 0, 0) * 8);
+  });
+
+  test("бережливость снижает цену найма", () => {
+    expect(hireCost(0, 1, 50, 3)).toBeLessThan(hireCost(0, 1, 50, 0));
+  });
+
+  test("тап — минимум 1 кукиш; слоповина возвращает меньше цены найма", () => {
     expect(tapValue(0)).toBe(1);
-    expect(tapValue(100)).toBe(16);
+    for (let r = 1; r <= MAX_RANK; r++)
+      expect(trashRefund(0, r)).toBeLessThan(hireCost(0, r, 0, 0));
   });
 
-  test("слоповина возвращает меньше, чем стоит найм", () => {
-    for (let r = 1; r <= MAX_RANK; r++) expect(trashRefund(r)).toBeLessThan(hireCost(r, 0));
+  test("выслуга растёт как степень заработанного (reorgExp) и обратима через earnedForGain", () => {
+    expect(seniorityGain(BALANCE.reorgBase * 0.99)).toBe(0);
+    expect(seniorityGain(BALANCE.reorgBase)).toBe(1);
+    for (const k of [2, 5, 10, 40]) expect(seniorityGain(earnedForGain(k))).toBe(k);
+    expect(seniorityGain(earnedForGain(10) * 0.98)).toBe(9);
   });
 });
 
-describe("старт игры", () => {
-  test("один стажёр за первым столом, 8 открытых столов", () => {
+describe("старт", () => {
+  test("открыт один этаж, за первым столом стажёр, картотека знает ранг 1", () => {
     const s = createState();
-    expect(s.desks[0]).toBe(1);
-    expect(s.deskCount).toBe(BALANCE.desksStart);
-    expect(s.incomePerSec).toBe(1);
+    expect(s.floorsUnlocked).toBe(1);
+    expect(s.floors[0]?.desks[0]).toBe(1);
+    expect(s.cards[0]).toBe(1);
+    expect(s.incomePerSec).toBeGreaterThan(0);
   });
 
   test("второго батракана можно нанять за несколько секунд тапов", () => {
     const s = createState();
-    const q = new EventQueue();
+    const q = new EventQueue(1024);
     let seconds = 0;
-    while (s.kukishi < currentHireCost(s)) {
-      for (let k = 0; k < 4; k++) tap(s, 0, q); // ~4 тапа в секунду
+    while (s.kukishi < currentHireCost(s, 0)) {
+      for (let k = 0; k < 3; k++) tap(s, 0, 0, q);
       step(s, 1, q);
       seconds++;
     }
-    expect(seconds).toBeLessThanOrEqual(2);
+    expect(seconds).toBeLessThanOrEqual(3);
   });
 });
 
-describe("commands", () => {
-  test("найм списывает цену, занимает свободный стол и растит цену", () => {
-    const s = withDesks([1], 100);
+describe("найм и квалификация", () => {
+  test("найм нанимает ранг квалификации и копит удорожание", () => {
+    const s = withDesks([1], 1e9);
+    const f = s.floors[0];
+    if (!f) return;
+    f.qual = 3;
     const q = new EventQueue();
-    const cost = currentHireCost(s);
-    expect(hire(s, q)).toBe(0);
-    expect(s.kukishi).toBe(100 - cost);
-    expect(s.desks[1]).toBe(1);
-    expect(currentHireCost(s)).toBeGreaterThan(cost);
-    expect(kinds(q)).toEqual([EV.hired]);
+    const cost = currentHireCost(s, 0);
+    expect(hire(s, 0, q)).toBe(0);
+    expect(f.desks[1]).toBe(3);
+    expect(f.hires).toBe(1);
+    expect(s.kukishi).toBe(1e9 - cost);
+    expect(currentHireCost(s, 0)).toBeGreaterThan(cost);
   });
 
-  test("найм без денег и без мест отклоняется, состояние не меняется", () => {
+  test("отказы не меняют состояние", () => {
+    const q = new EventQueue();
     const poor = withDesks([1], 0);
-    const q = new EventQueue();
-    expect(hire(poor, q)).toBe(DENY.noMoney);
-    expect(poor.desks[1]).toBe(0);
-    const full = withDesks([1, 1, 1, 1, 1, 1, 1, 1], 1e9);
-    expect(hire(full, q)).toBe(DENY.noSpace);
-    expect(full.kukishi).toBe(1e9);
+    expect(hire(poor, 0, q)).toBe(DENY.noMoney);
+    expect(poor.floors[0]?.desks[1]).toBe(0);
+    const full = withDesks([1, 1, 1, 1, 1, 1, 1, 1], 1e12);
+    expect(hire(full, 0, q)).toBe(DENY.noSpace);
+    expect(full.kukishi).toBe(1e12);
+    expect(hire(createState(), 1, q)).toBe(DENY.locked);
   });
 
-  test("слияние двух одинаковых — повышение, открытие ранга, рост дохода", () => {
+  test("квалификация: цена, предел", () => {
+    const s = withDesks([1], 1e30);
+    const q = new EventQueue(64);
+    for (let k = 1; k < BALANCE.qualMax; k++) expect(buyQual(s, 0, q)).toBe(0);
+    expect(s.floors[0]?.qual).toBe(BALANCE.qualMax);
+    expect(buyQual(s, 0, q)).toBe(DENY.maxed);
+  });
+
+  test("найм по блату бесплатен, но двигает удорожание", () => {
+    const s = withDesks([1], 0);
+    const q = new EventQueue();
+    const before = currentHireCost(s, 0);
+    expect(hireFree(s, 0, q)).toBe(0);
+    expect(s.kukishi).toBe(0);
+    expect(currentHireCost(s, 0)).toBeGreaterThan(before);
+  });
+});
+
+describe("слияние, перенос, слоповина", () => {
+  test("слияние: ранг выше, карточка, рост дохода", () => {
     const s = withDesks([2, 2]);
     const q = new EventQueue();
     const before = s.incomePerSec;
-    expect(move(s, 0, 1, q)).toBe(0);
-    expect(s.desks[0]).toBe(0);
-    expect(s.desks[1]).toBe(3);
-    expect(s.maxRank).toBe(3);
+    expect(move(s, 0, 0, 1, q)).toBe(0);
+    expect(s.floors[0]?.desks[1]).toBe(3);
     expect(s.incomePerSec).toBeGreaterThan(before);
-    expect(kinds(q)).toEqual([EV.merged, EV.rankUnlocked]);
+    expect(kinds(q)).toContain(EV.merged);
+    expect((s.cards[0] ?? 0) & 0b100).toBe(0b100);
   });
 
-  test("повторное открытие ранга не порождает событие", () => {
-    const s = withDesks([2, 2, 3]);
+  test("премированность сохраняется при слиянии и удваивает доход", () => {
+    const s = withDesks([3, 3]);
+    const f = s.floors[0];
+    if (!f) return;
+    f.rare[0] = 1;
+    recomputeIncome(s);
+    move(s, 0, 1, 0, new EventQueue());
+    expect(f.rare[0]).toBe(1);
+    expect(f.desks[0]).toBe(4);
+    const plain = withDesks([4]);
+    plain.cards[0] = s.cards[0] ?? 0; // одинаковый бонус картотеки
+    recomputeIncome(plain);
+    expect(s.incomePerSec).toBeCloseTo(plain.incomePerSec * BALANCE.rareMult);
+  });
+
+  test("максимальный ранг не сливается — обмен; разные — обмен; на пустой — перенос", () => {
+    const s = withDesks([MAX_RANK, MAX_RANK, 3]);
     const q = new EventQueue();
-    move(s, 0, 1, q);
-    expect(kinds(q)).toEqual([EV.merged]);
+    move(s, 0, 0, 1, q);
+    move(s, 0, 0, 2, q);
+    move(s, 0, 2, 5, q);
+    expect(Array.from(s.floors[0]?.desks.subarray(0, 6) ?? [])).toEqual([
+      3,
+      MAX_RANK,
+      0,
+      0,
+      0,
+      MAX_RANK,
+    ]);
+    expect(kinds(q)).toEqual([EV.swapped, EV.swapped, EV.moved]);
   });
 
-  test("максимальный ранг не сливается — меняются местами", () => {
-    const s = withDesks([MAX_RANK, MAX_RANK]);
-    const q = new EventQueue();
-    move(s, 0, 1, q);
-    expect([s.desks[0], s.desks[1]]).toEqual([MAX_RANK, MAX_RANK]);
-    expect(kinds(q)).toEqual([EV.swapped]);
-  });
-
-  test("разные ранги меняются местами, на пустой стол — перенос", () => {
-    const s = withDesks([1, 3]);
-    const q = new EventQueue();
-    move(s, 0, 1, q);
-    expect([s.desks[0], s.desks[1]]).toEqual([3, 1]);
-    move(s, 1, 5, q);
-    expect([s.desks[1], s.desks[5]]).toEqual([0, 1]);
-    expect(kinds(q)).toEqual([EV.swapped, EV.moved]);
-  });
-
-  test("неверные ходы отклоняются", () => {
-    const s = withDesks([1]);
-    const q = new EventQueue();
-    expect(move(s, 0, 0, q)).toBe(DENY.invalid);
-    expect(move(s, 3, 1, q)).toBe(DENY.invalid);
-    expect(move(s, 0, 11, q)).toBe(DENY.invalid); // стол закрыт
-    expect(tap(s, 4, q)).toBe(DENY.invalid);
-  });
-
-  test("слоповина: возврат кукишей, стол свободен; последнего выбросить нельзя", () => {
+  test("слоповина: возврат, последнего выбросить нельзя", () => {
     const s = withDesks([1, 4]);
     const q = new EventQueue();
-    expect(trash(s, 1, q)).toBe(0);
-    expect(s.desks[1]).toBe(0);
-    expect(s.kukishi).toBe(trashRefund(4));
-    expect(trash(s, 0, q)).toBe(DENY.invalid);
-    expect(s.desks[0]).toBe(1);
+    expect(trash(s, 0, 1, q)).toBe(0);
+    expect(s.kukishi).toBe(trashRefund(0, 4));
+    expect(trash(s, 0, 0, q)).toBe(DENY.invalid);
+  });
+});
+
+describe("оснащение, столы, этажи", () => {
+  test("оснащение повышает доход этажа", () => {
+    const s = withDesks([5], 1e12);
+    const before = s.incomePerSec;
+    expect(buyEquip(s, 0, new EventQueue())).toBe(0);
+    expect(s.incomePerSec).toBeCloseTo(before * (1 + BALANCE.equipStep));
+  });
+
+  test("столы докупаются до максимума", () => {
+    const s = withDesks([1], 1e30);
+    const q = new EventQueue(64);
+    while (buyDesk(s, 0, q) === 0);
+    expect(s.floors[0]?.deskCount).toBe(BALANCE.desksMax);
+  });
+
+  test("этаж открывается по очереди, со стартовым батраканом, и даёт доход", () => {
+    const s = withDesks([1], 1e30);
+    const q = new EventQueue();
+    expect(unlockFloor(s, q)).toBe(0);
+    expect(s.floorsUnlocked).toBe(2);
+    expect(s.floors[1]?.desks[0]).toBe(1);
+    expect(s.floorIncome[1]).toBeGreaterThan(s.floorIncome[0] ?? 0);
+  });
+});
+
+describe("реорганизация и перки", () => {
+  test("без заработка реорганизация недоступна", () => {
+    expect(reorganize(createState(), new EventQueue())).toBe(DENY.noMoney);
+  });
+
+  test("сбрасывает забег, но сохраняет этажи, выслугу, печати и картотеку", () => {
+    const s = withDesks([7, 7, 3], 5e9);
+    s.floorsUnlocked = 2;
+    s.earnedThisRun = earnedForGain(3);
+    s.cards[0] = 0b1111111;
+    const f = s.floors[0];
+    if (!f) return;
+    f.qual = 4;
+    f.equip = 3;
+    const q = new EventQueue();
+    expect(reorgGain(s)).toBe(3);
+    expect(reorganize(s, q)).toBe(0);
+    expect([s.seniority, s.stamps, s.kukishi, s.earnedThisRun]).toEqual([
+      3,
+      3,
+      BALANCE.startKukishi,
+      0,
+    ]);
+    expect(s.floorsUnlocked).toBe(2);
+    expect(f.qual).toBe(1);
+    expect(f.equip).toBe(0);
+    expect(Array.from(f.desks.subarray(0, 3))).toEqual([1, 0, 0]);
+    expect(s.cards[0]).toBe(0b1111111);
+  });
+
+  test("выслуга увеличивает доход навсегда", () => {
+    const s = withDesks([5]);
+    const base = s.incomePerSec;
+    s.seniority = 5;
+    recomputeIncome(s);
+    expect(s.incomePerSec).toBeCloseTo(base * (1 + 5 * BALANCE.seniorityBonus));
+  });
+
+  test("перки покупаются за печати, перк столов действует сразу и после реорганизации", () => {
+    const s = withDesks([1]);
+    s.stamps = 100;
+    const q = new EventQueue(64);
+    const desk = perkIndex("extraDesk");
+    expect(buyPerk(s, desk, q)).toBe(0);
+    expect(s.floors[0]?.deskCount).toBe(BALANCE.desksStart + 1);
+    s.earnedThisRun = BALANCE.reorgBase;
+    reorganize(s, q);
+    expect(s.floors[0]?.deskCount).toBe(BALANCE.desksStart + 1);
+    const qual = perkIndex("startQual");
+    buyPerk(s, qual, q);
+    s.earnedThisRun = BALANCE.reorgBase;
+    reorganize(s, q);
+    expect(s.floors[0]?.qual).toBe(2);
+    expect(s.floors[0]?.desks[0]).toBe(2);
+  });
+
+  test("перк нельзя купить выше максимума или без печатей", () => {
+    const s = createState();
+    const q = new EventQueue(64);
+    expect(buyPerk(s, 0, q)).toBe(DENY.noMoney);
+    s.stamps = 1000;
+    const auto = perkIndex("autoMerge");
+    expect(buyPerk(s, auto, q)).toBe(0);
+    expect(buyPerk(s, auto, q)).toBe(DENY.maxed);
+    expect(PERKS.length).toBeGreaterThanOrEqual(7);
+  });
+
+  test("автослияние сливает младшую пару", () => {
+    const s = withDesks([3, 1, 3, 1]);
+    autoMergeOnce(s, new EventQueue());
+    expect(Array.from(s.floors[0]?.desks.subarray(0, 4) ?? [])).toEqual([3, 2, 3, 0]);
   });
 });
 
 describe("sim", () => {
-  test("за минуту каждый стол выплачивает ровно свой доход", () => {
+  test("за минуту этаж выплачивает свой доход", () => {
     const s = withDesks([1, 3, 5]);
-    const q = new EventQueue(1024);
+    const q = new EventQueue(4096);
+    const income = s.incomePerSec;
     for (let i = 0; i < 60 * 20; i++) step(s, 0.05, q);
-    const expected = 60 * (incomeOf(1) + incomeOf(3) + incomeOf(5));
-    // Допуск — одна выплата каждого стола (фаза таймера)
-    expect(Math.abs(s.kukishi - expected)).toBeLessThanOrEqual(
-      incomeOf(1) + incomeOf(3) + incomeOf(5),
-    );
+    expect(Math.abs(s.kukishi - 60 * income)).toBeLessThanOrEqual(income);
   });
 
   test("после зависания кадра выплаты не теряются и идут одним событием", () => {
@@ -169,7 +331,7 @@ describe("sim", () => {
     const q = new EventQueue();
     step(s, 10, q);
     expect(q.length).toBe(1);
-    expect(q.value[0]).toBeGreaterThanOrEqual(9 * incomeOf(2));
+    expect(q.value[0]).toBeGreaterThanOrEqual(9 * rankIncome(0, 2));
   });
 });
 
@@ -179,27 +341,51 @@ describe("events", () => {
     q.push(EV.tap);
     q.push(EV.tap);
     q.push(EV.tap);
-    expect(q.length).toBe(2);
-    expect(q.dropped).toBe(1);
-    q.clear();
-    expect(q.length).toBe(0);
+    expect([q.length, q.dropped]).toEqual([2, 1]);
   });
 });
 
 describe("save", () => {
-  test("сохранение → загрузка даёт то же состояние", () => {
+  test("v2: сохранение → загрузка даёт то же состояние", () => {
     const s = withDesks([1, 2, 7, 0, 3], 12345.5);
-    s.hires[2] = 7;
-    s.totalEarned = 99999;
-    const json = JSON.parse(JSON.stringify(toSave(s, 1))) as unknown;
-    const back = fromSave(json);
+    s.floorsUnlocked = 2;
+    s.seniority = 4;
+    s.stamps = 2;
+    s.perks[1] = 1;
+    const f = s.floors[0];
+    if (f) {
+      f.qual = 3;
+      f.rare[2] = 1;
+    }
+    recomputeIncome(s);
+    const back = fromSave(JSON.parse(JSON.stringify(toSave(s, 1))) as unknown);
     expect(back).not.toBeNull();
     if (!back) return;
-    expect(Array.from(back.desks)).toEqual(Array.from(s.desks));
-    expect(back.kukishi).toBe(s.kukishi);
-    expect(back.hires[2]).toBe(7);
-    expect(back.maxRank).toBe(s.maxRank);
-    expect(back.incomePerSec).toBe(s.incomePerSec);
+    expect(Array.from(back.floors[0]?.desks ?? [])).toEqual(Array.from(f?.desks ?? []));
+    expect(back.floors[0]?.rare[2]).toBe(1);
+    expect([back.floorsUnlocked, back.seniority, back.stamps, back.perks[1]]).toEqual([2, 4, 2, 1]);
+    expect(back.incomePerSec).toBeCloseTo(s.incomePerSec);
+  });
+
+  test("v1 из среза мигрирует: батраканы, кукиши и картотека на первом этаже", () => {
+    const v1 = {
+      v: 1,
+      desks: [3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      deskCount: 8,
+      kukishi: 500,
+      hires: [0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+      maxRank: 3,
+      earnedThisRun: 900,
+      totalEarned: 900,
+      collection: 0b111,
+      savedAt: 0,
+    };
+    const s = fromSave(v1);
+    expect(s).not.toBeNull();
+    expect(Array.from(s?.floors[0]?.desks.subarray(0, 2) ?? [])).toEqual([3, 2]);
+    expect(s?.kukishi).toBe(500);
+    expect(s?.cards[0]).toBe(0b111);
+    expect(s?.floors[0]?.hires).toBe(5);
   });
 
   test("битые сохранения отбрасываются", () => {
@@ -207,15 +393,42 @@ describe("save", () => {
     const cases: unknown[] = [
       null,
       "мусор",
-      { ...good, v: 2 },
-      { ...good, desks: [1] },
-      { ...good, desks: good.desks.map(() => 99) },
+      [],
+      { ...good, v: 3 },
+      { ...good, floorsUnlocked: 0 },
       { ...good, kukishi: -5 },
       { ...good, kukishi: Number.NaN },
-      { ...good, deskCount: 3 },
-      { ...good, maxRank: 0 },
-      { ...good, desks: good.desks.map((_, i) => (i === 11 ? 1 : 0)) }, // батракан за закрытым столом
+      { ...good, perks: good.perks.map(() => 99) },
+      { ...good, floors: good.floors.slice(0, 1) },
+      { ...good, floors: good.floors.map((f) => ({ ...f, desks: f.desks.map(() => 99) })) },
+      {
+        ...good,
+        floors: good.floors.map((f) => ({
+          ...f,
+          desks: f.desks.map((_, i) => (i === 11 ? 1 : 0)),
+        })),
+      },
     ];
     for (const c of cases) expect(fromSave(c)).toBeNull();
+  });
+});
+
+describe("картотека", () => {
+  test("достигнутый ранг открывает и все младшие карточки", () => {
+    const s = withDesks([4, 4]);
+    s.cards[0] = 1;
+    move(s, 0, 0, 1, new EventQueue());
+    expect(s.cards[0]).toBe(0b11111);
+  });
+
+  test("этаж, открытый с высокой стартовой квалификацией, сразу знает младшие ранги", () => {
+    const s = createState();
+    s.stamps = 100;
+    const q = new EventQueue(64);
+    buyPerk(s, perkIndex("startQual"), q);
+    buyPerk(s, perkIndex("startQual"), q);
+    s.kukishi = 1e30;
+    unlockFloor(s, q);
+    expect(s.cards[1]).toBe(0b111);
   });
 });

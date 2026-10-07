@@ -17,7 +17,9 @@ describe("formatCompact", () => {
     [1_500_000, "1,5 млн", "1.5M"],
     [2e9, "2 млрд", "2B"],
     [3.3e12, "3,3 трлн", "3.3T"],
-    [5e15, "5000 трлн", "5000T"],
+    [5e15, "5 квдр", "5Qa"],
+    [1.2e18, "1,2 квнт", "1.2Qi"],
+    [4e24, "4000 скст", "4000Sx"],
   ];
   for (const [v, r, e] of cases) {
     test(`${v} → «${r}» / «${e}»`, () => {
@@ -28,7 +30,8 @@ describe("formatCompact", () => {
 
   test("границы степеней не ломаются из-за неточности log10", () => {
     const p = { int: 0, frac: -1, suffix: 0 };
-    for (const k of [1, 2, 3, 4]) {
+    // 1000^k − 1 точно представимо в double только до k = 5
+    for (const k of [1, 2, 3, 4, 5]) {
       compactParts(1000 ** k, p);
       expect([p.int, p.suffix]).toEqual([1, k]);
       compactParts(1000 ** k - 1, p);

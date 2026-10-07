@@ -1,7 +1,8 @@
 /**
  * Слой платформы. Игра работает только через этот интерфейс и не знает, запущена ли она
  * на Яндексе. Главное правило: ни один метод не бросает исключений.
- * В срезе (Фаза 5) есть только LocalPlatform; YandexPlatform, реклама и лидерборд — Фаза 7.
+ * Сейчас есть только LocalPlatform (с имитацией рекламы для разработки); YandexPlatform — Фаза 7.
+ * Паузу игры и звука на время рекламы ставит игра (game/ads.ts), платформа только показывает.
  */
 export interface Platform {
   readonly kind: "yandex" | "local";
@@ -17,4 +18,8 @@ export interface Platform {
   /** Начало и конец активного геймплея (GameplayAPI.start/stop). */
   gameplayStart(): void;
   gameplayStop(): void;
+  /** Реклама за награду: true — досмотрели, награду выдать. Ошибка или закрытие — false. */
+  showRewarded(): Promise<boolean>;
+  /** Межстраничная реклама: true — показана. Частоту дополнительно режет game/ads.ts. */
+  showInterstitial(): Promise<boolean>;
 }

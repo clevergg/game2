@@ -1,6 +1,8 @@
 /** Текущий язык и доступ к строкам. UI берёт текст только отсюда. */
+import { floorId } from "../data/floors";
+import { PERKS } from "../data/perks";
 import { rankId } from "../data/ranks";
-import type { Dict, UiKey } from "./dict";
+import type { Dict, PlanKey, UiKey } from "./dict";
 import { en } from "./en";
 import { formatCompact } from "./format";
 import { ru } from "./ru";
@@ -33,8 +35,33 @@ export function t(key: UiKey): string {
   return dict.ui[key];
 }
 
-export function rankName(rank: number): string {
-  return dict.ranks[rankId(rank)];
+/** Строка с подстановкой: «Этаж {n}» + { n: 2 } → «Этаж 2». */
+export function tf(key: UiKey, vars: Readonly<Record<string, string | number>>): string {
+  return dict.ui[key].replace(/\{(\w+)\}/g, (m, name: string) => {
+    const v = vars[name];
+    return v === undefined ? m : String(v);
+  });
+}
+
+export function rankName(rank: number, floor = 0): string {
+  return dict.ranks[floorId(floor)][rankId(rank)];
+}
+
+export function floorName(floor: number): string {
+  return dict.floors[floorId(floor)];
+}
+
+export function perkText(i: number): { readonly name: string; readonly desc: string } {
+  const id = PERKS[i]?.id;
+  return id === undefined ? { name: "", desc: "" } : dict.perks[id];
+}
+
+const PLAN_KEYS: readonly PlanKey[] = ["earn", "merges", "hires", "taps", "debiks", "shifts"];
+
+/** Текст плана смены или поручения (тип — индекс PLAN из core/live). */
+export function planText(type: number, target: string): string {
+  const key = PLAN_KEYS[type];
+  return key === undefined ? "" : dict.plans[key].replace("{n}", target);
 }
 
 export function fmt(value: number): string {

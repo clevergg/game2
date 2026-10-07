@@ -8,7 +8,10 @@ function el<T extends HTMLElement>(id: string, type: new () => T): T {
   return e;
 }
 
-const platform = createLocalPlatform();
+/** Имитация рекламы: при локальном запуске (не во фрейме Яндекса) или по `?fakeAds=1`. */
+const fakeAds =
+  window.self === window.top || new URLSearchParams(location.search).get("fakeAds") === "1";
+const platform = createLocalPlatform(fakeAds);
 const loader = document.getElementById("loader");
 
 startGame(platform, el("stage", HTMLCanvasElement), el("ui", HTMLDivElement))

@@ -7,11 +7,11 @@ export interface CompactParts {
   int: number;
   /** Одна цифра после запятой или −1, если её не показываем. */
   frac: number;
-  /** Индекс суффикса: 0 — единицы, 1 — тысячи, 2 — миллионы, 3 — миллиарды, 4 — триллионы. */
+  /** Индекс суффикса: 0 — единицы, 1 — тысячи, … 4 — триллионы, … 7 — секстиллионы. */
   suffix: number;
 }
 
-const MAX_SUFFIX = 4;
+const MAX_SUFFIX = 7;
 
 /** Пишет результат в out, чтобы в игровом цикле не создавать объекты. */
 export function compactParts(value: number, out: CompactParts): CompactParts {

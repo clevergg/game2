@@ -9,7 +9,7 @@ import { perkCost, reorgGain } from "../core/commands";
 import { deskCost, earnedForGain, equipCost, qualCost } from "../core/economy";
 import { avansPreview, planProgress, taskDone } from "../core/live";
 import { CNT, TASK_COUNT } from "../core/live-state";
-import type { OfficeState } from "../core/state";
+import { type OfficeState, popcount } from "../core/state";
 import type { ChallengeView, HrView, ShiftView, TasksView } from "../ui/store";
 
 export function shiftView(s: OfficeState): ShiftView {
@@ -106,4 +106,13 @@ export function hrBadge(s: OfficeState): boolean {
     if ((s.perks[i] ?? 0) < perkMax(i) && s.stamps >= perkCost(s, i)) return true;
   }
   return false;
+}
+
+/** Счёт доски почёта «Карьера»: выслуга × 100 + открытые карточки (обычные и ★). */
+export function careerScore(s: OfficeState): number {
+  let cards = 0;
+  for (let fi = 0; fi < FLOOR_COUNT; fi++) {
+    cards += popcount(s.cards[fi] ?? 0) + popcount(s.rareCards[fi] ?? 0);
+  }
+  return s.seniority * 100 + cards;
 }

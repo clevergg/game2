@@ -71,10 +71,19 @@ import {
   type UiState,
 } from "../ui/store";
 import { Ads } from "./ads";
+import { PAUSE, Pauser } from "./pause";
 import { awaySeconds, dayNumber } from "./days";
 import { computeLayout, HUD_TOP, type Layout } from "./layout";
 import { HIT, OfficeScene } from "./scene";
-import { challengeView, hrBadge, hrView, shiftView, tasksBadge, tasksView } from "./snapshot";
+import {
+  careerScore,
+  challengeView,
+  hrBadge,
+  hrView,
+  shiftView,
+  tasksBadge,
+  tasksView,
+} from "./snapshot";
 import { nextStage, parseStage, TUTORIAL, type TutorialStage } from "./tutorial";
 
 const AUTOSAVE_MS = 15_000;
@@ -108,8 +117,6 @@ async function loadState(platform: Platform): Promise<Loaded> {
     return { state: createState(), savedAt: 0 };
   }
 }
-
-const today = (): number => dayNumber(Date.now(), new Date().getTimezoneOffset());
 
 export async function startGame(
   platform: Platform,
@@ -190,7 +197,7 @@ export async function startGame(
 
   // ——— Сохранение ———
   const save = (flush: boolean): void => {
-    void platform.writeSave(JSON.stringify(toSave(state, Date.now())), flush);
+    void platform.writeSave(JSON.stringify(toSave(state, platform.now())), flush);
   };
   window.setInterval(() => {
     save(false);
@@ -213,21 +220,30 @@ export async function startGame(
     ui.set({ modal });
   };
 
-  // ——— Реклама: на время показа всё на паузе ———
+  // ——— Пауза: скрытая вкладка, реклама, пауза от платформы ———
   let loop: Loop | null = null;
-  const ads = new Ads(platform, {
-    pause: () => {
+  const pauser = new Pauser((paused) => {
+    if (paused) {
       loop?.pause();
       audio.setPaused(true);
       platform.gameplayStop();
+    } else {
+      audio.setPaused(false);
+      loop?.resume();
+      platform.gameplayStart();
+    }
+  });
+  platform.onPause((paused) => {
+    pauser.set(PAUSE.external, paused);
+  });
+  const ads = new Ads(platform, {
+    pause: () => {
+      pauser.set(PAUSE.ad, true);
       ui.set({ adBusy: true });
     },
     resume: () => {
       ui.set({ adBusy: false });
-      if (document.hidden) return;
-      audio.setPaused(false);
-      loop?.resume();
-      platform.gameplayStart();
+      pauser.set(PAUSE.ad, false);
     },
   });
   /** Реклама за награду: при успехе выполняет give, иначе говорит, что реклама недоступна. */
@@ -240,10 +256,12 @@ export async function startGame(
   };
 
   // ——— Дни: поручения, аванс; отгул ———
+  // Дни считаются по серверному времени Яндекса (часы устройства можно перевести)
+  const today = (): number => dayNumber(platform.now(), new Date().getTimezoneOffset());
   let day = today();
   startDay(state, day);
   let dayCheckIn = DAY_CHECK_SEC;
-  const away = awaySeconds(loaded.savedAt, Date.now());
+  const away = awaySeconds(loaded.savedAt, platform.now());
   const otgul = loaded.savedAt > 0 && away >= OTGUL_MIN_SEC ? offlineAmount(state, away) : 0;
   if (otgul > 0) showModal({ kind: "otgul", amount: otgul });
 
@@ -388,6 +406,7 @@ export async function startGame(
       tab = next;
       audio.play("click");
       ui.set({ tab });
+      if (next === "board") loadBoard();
     },
     closeModal: () => {
       closeModal();
@@ -482,6 +501,12 @@ export async function startGame(
         after();
       });
     },
+    login: () => {
+      void platform.login().then(() => {
+        platform.submitScore(careerScore(state));
+        loadBoard();
+      });
+    },
     acceptKredik: () => {
       acceptKredik(state, queue);
       after();
@@ -493,6 +518,28 @@ export async function startGame(
     },
   };
   render(h(App, { store: ui, actions, atlas }), uiRoot);
+
+  // ——— Доска почёта ———
+  let boardRequest = 0;
+  function loadBoard(): void {
+    const id = ++boardRequest;
+    const myScore = careerScore(state);
+    ui.set({
+      board: { status: "loading", entries: [], myRank: 0, myScore, canLogin: platform.canLogin },
+    });
+    void platform.getLeaderboard().then((lb) => {
+      if (id !== boardRequest) return;
+      ui.set({
+        board: lb
+          ? { status: "ready", entries: lb.entries, myRank: lb.myRank, myScore, canLogin: false }
+          : { status: "none", entries: [], myRank: 0, myScore, canLogin: platform.canLogin },
+      });
+    });
+  }
+  const submitCareer = (): void => {
+    platform.submitScore(careerScore(state));
+  };
+  submitCareer();
 
   // ——— События core → сцена, звук, тосты, окна ———
   function flushEvents(): void {
@@ -510,9 +557,11 @@ export async function startGame(
           break;
         case EV.rankUnlocked:
           toast(t("newRank"), rankName(b, f));
+          submitCareer();
           break;
         case EV.rareAppeared:
           if (f === viewFloor) toast(t("rare"), t("rareDesc"));
+          submitCareer();
           break;
         case EV.noteOpened:
           if (b === NOTE.avral) toast(tf("avral", { n: LIVE.avralMult, t: LIVE.avralSec }));
@@ -548,8 +597,11 @@ export async function startGame(
           break;
         case EV.deskBought:
         case EV.perkBought:
+          relayout();
+          break;
         case EV.reorganized:
           relayout();
+          submitCareer();
           break;
       }
     }
@@ -624,6 +676,8 @@ export async function startGame(
         dayCheckIn -= UI_PUBLISH_SEC;
         if (dayCheckIn <= 0) {
           dayCheckIn = DAY_CHECK_SEC;
+          // Отложенный ограничителем счёт уйдёт при следующей проверке (повторы платформа пропускает)
+          submitCareer();
           const d = today();
           if (d !== day) {
             day = d;
@@ -640,18 +694,11 @@ export async function startGame(
     },
   });
   loop = gameLoop;
+  pauser.set(PAUSE.hidden, document.hidden);
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      gameLoop.pause();
-      audio.setPaused(true);
-      platform.gameplayStop();
-      save(true);
-    } else if (!ads.showing) {
-      audio.setPaused(false);
-      gameLoop.resume();
-      platform.gameplayStart();
-    }
+    if (document.hidden) save(true);
+    pauser.set(PAUSE.hidden, document.hidden);
   });
   window.addEventListener("pagehide", () => {
     save(true);

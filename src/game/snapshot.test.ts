@@ -4,7 +4,16 @@ import { claimShift, liveStep, startDay } from "../core/live";
 import { CNT, TASK_COUNT } from "../core/live-state";
 import { addKukishi, createState } from "../core/state";
 import { awaySeconds, dayNumber } from "./days";
-import { challengeView, hrBadge, hrView, shiftView, tasksBadge, tasksView } from "./snapshot";
+import { PAUSE, Pauser } from "./pause";
+import {
+  careerScore,
+  challengeView,
+  hrBadge,
+  hrView,
+  shiftView,
+  tasksBadge,
+  tasksView,
+} from "./snapshot";
 
 describe("дни", () => {
   test("номер дня меняется в местную полночь", () => {
@@ -73,5 +82,28 @@ describe("снимки для UI", () => {
     for (let c = 0; c < s.live.counters.length; c++) s.live.counters[c] = 1e9;
     addKukishi(s, 1e12);
     expect(tasksBadge(s, 50)).toBe(1 + TASK_COUNT);
+  });
+});
+
+describe("доска почёта и пауза", () => {
+  test("карьера: выслуга × 100 + карточки", () => {
+    const s = createState();
+    expect(careerScore(s)).toBe(1); // карточка стажёра Бухгалтерии
+    s.seniority = 3;
+    s.cards[1] = 0b111;
+    s.rareCards[0] = 0b1;
+    expect(careerScore(s)).toBe(300 + 1 + 3 + 1);
+  });
+
+  test("пауза держится, пока есть хоть одна причина", () => {
+    const calls: boolean[] = [];
+    const p = new Pauser((v) => calls.push(v));
+    p.set(PAUSE.ad, true);
+    p.set(PAUSE.hidden, true);
+    p.set(PAUSE.ad, false);
+    expect(p.paused).toBe(true);
+    p.set(PAUSE.hidden, false);
+    p.set(PAUSE.external, false);
+    expect(calls).toEqual([true, false]);
   });
 });

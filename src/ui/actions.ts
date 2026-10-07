@@ -32,6 +32,8 @@ export interface UiActions {
   readonly askColoid: () => void;
   readonly watchPremia: () => void;
   readonly watchColoid: () => void;
+  // Доска почёта
+  readonly login: () => void;
   // Кредик
   readonly acceptKredik: () => void;
   readonly declineKredik: () => void;

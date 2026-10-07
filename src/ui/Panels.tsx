@@ -7,7 +7,7 @@ import type { Atlas } from "../engine/atlas";
 import { floorName, fmt, perkText, planText, rankName, t, tf } from "../i18n";
 import type { UiActions } from "./actions";
 import { Icon, Progress } from "./Icon";
-import type { HrTab, HrView, TasksView, UiState } from "./store";
+import type { BoardView, HrTab, HrView, TasksView, UiState } from "./store";
 
 function Sheet(p: { title: string; onClose: () => void; children: ComponentChildren }) {
   return (
@@ -66,8 +66,13 @@ function BuyRow(p: {
   );
 }
 
-const TABS: readonly HrTab[] = ["floor", "alesya", "cards"];
-const TAB_KEY = { floor: "tabFloor", alesya: "tabAlesya", cards: "tabCards" } as const;
+const TABS: readonly HrTab[] = ["floor", "alesya", "cards", "board"];
+const TAB_KEY = {
+  floor: "tabFloor",
+  alesya: "tabAlesya",
+  cards: "tabCards",
+  board: "tabBoard",
+} as const;
 
 export function HrPanel(p: { s: UiState; hr: HrView; actions: UiActions; atlas: Atlas }) {
   const { s, hr, actions, atlas } = p;
@@ -93,6 +98,7 @@ export function HrPanel(p: { s: UiState; hr: HrView; actions: UiActions; atlas: 
       {s.tab === "floor" ? <FloorTab s={s} hr={hr} actions={actions} atlas={atlas} /> : null}
       {s.tab === "alesya" ? <AlesyaTab hr={hr} actions={actions} atlas={atlas} /> : null}
       {s.tab === "cards" ? <CardsTab hr={hr} s={s} atlas={atlas} /> : null}
+      {s.tab === "board" ? <BoardTab board={s.board} actions={actions} atlas={atlas} /> : null}
     </Sheet>
   );
 }
@@ -300,5 +306,52 @@ export function TasksPanel(p: { tasks: TasksView; actions: UiActions; atlas: Atl
         </div>
       </div>
     </Sheet>
+  );
+}
+
+function BoardTab({
+  board,
+  actions,
+  atlas,
+}: {
+  board: BoardView | null;
+  actions: UiActions;
+  atlas: Atlas;
+}) {
+  return (
+    <div class="list">
+      <div class="board-head">
+        <Icon atlas={atlas} frame="icon_board" size={48} />
+        <span class="buy-text">
+          <span class="buy-title">{t("board")}</span>
+          <span class="buy-desc">{t("boardDesc")}</span>
+          <span class="buy-desc strong">
+            {t("career")}: {fmt(board?.myScore ?? 0)}
+          </span>
+        </span>
+      </div>
+      {board === null || board.status === "loading" ? (
+        <span class="buy-desc">{t("boardLoading")}</span>
+      ) : board.status === "none" ? (
+        <>
+          <span class="buy-desc">{t("boardNone")}</span>
+          {board.canLogin ? (
+            <button type="button" class="btn gold" onClick={actions.login}>
+              {t("login")}
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <ol class="board">
+          {board.entries.map((e) => (
+            <li key={`${e.rank}-${e.name}`} class={`board-row ${e.me ? "me" : ""}`}>
+              <span class="board-rank">{e.rank}</span>
+              <span class="board-name">{e.me ? t("you") : e.name || t("anonymous")}</span>
+              <span class="board-score">{fmt(e.score)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }

@@ -40,6 +40,7 @@ export function createLocalPlatform(fakeAds: boolean): Platform {
   return {
     kind: "local",
     lang: navigator.language,
+    now: () => Date.now(),
     loadSave() {
       try {
         return Promise.resolve(storage()?.getItem(SAVE_KEY) ?? null);
@@ -78,5 +79,10 @@ export function createLocalPlatform(fakeAds: boolean): Platform {
     showInterstitial() {
       return fakeAds ? fakeAd() : Promise.resolve(false);
     },
+    onPause() {},
+    submitScore() {},
+    getLeaderboard: () => Promise.resolve(null),
+    login: () => Promise.resolve(false),
+    canLogin: false,
   };
 }

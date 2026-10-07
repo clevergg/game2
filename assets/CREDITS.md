@@ -15,7 +15,8 @@
 | Инструмент | Лицензия | Роль |
 |---|---|---|
 | [three.js](https://github.com/mrdoob/three.js) | MIT | построение и рендер 3D-моделей при генерации атласа |
-| [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | запуск headless Chromium для рендера |
+| [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | запуск headless Chromium для рендера, скриншотов и записи промо-видео |
+| [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (сборка FFmpeg с libx264) | GPL-3.0 (бинарник FFmpeg) | кодирование промо-видео в MP4 H.264; в игру и архив не входит |
 
 ## Интеллектуальная собственность
 

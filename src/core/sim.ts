@@ -1,8 +1,10 @@
-/** Шаг симуляции: выплаты со столов всех открытых этажей и автослияние (перк). */
-import { BALANCE } from "../data/balance";
+/** Шаг симуляции: выплаты со столов всех открытых этажей, автослияние (перк, калоид) и события. */
+import { BALANCE, LIVE } from "../data/balance";
 import { MAX_RANK } from "../data/ranks";
 import { mergeDesks } from "./commands";
 import { EV, type EventQueue } from "./events";
+import { buffActive, liveStep, repay } from "./live";
+import { BUFF } from "./live-state";
 import { addKukishi, deskPayout, type OfficeState, perkLevel } from "./state";
 
 export function step(s: OfficeState, dt: number, q: EventQueue): void {
@@ -22,7 +24,7 @@ export function step(s: OfficeState, dt: number, q: EventQueue): void {
       }
       f.payoutTimers[i] = t;
       if (payouts > 0) {
-        const amount = deskPayout(s, fi, i) * payouts;
+        const amount = repay(s, deskPayout(s, fi, i) * payouts, q);
         addKukishi(s, amount);
         q.push(EV.payout, fi, i, rank, amount);
       }
@@ -35,6 +37,14 @@ export function step(s: OfficeState, dt: number, q: EventQueue): void {
       autoMergeOnce(s, q);
     }
   }
+  if (buffActive(s, BUFF.coloid)) {
+    s.live.coloidTimer -= dt;
+    if (s.live.coloidTimer <= 0) {
+      s.live.coloidTimer += LIVE.coloidMergePeriod;
+      autoMergeOnce(s, q);
+    }
+  } else s.live.coloidTimer = 0;
+  liveStep(s, dt, q);
 }
 
 /** Сливает одну пару одинаковых батраканов на каждом этаже (младшие ранги — в первую очередь). */

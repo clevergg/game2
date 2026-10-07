@@ -9,7 +9,9 @@ const fmt = (t?: number): string => {
 };
 
 const started = performance.now();
-const m: Milestones = runBot({ limit: 40 * 3600, tapsPerSec: 2, dt: 0.25 });
+const events = !process.argv.includes("--no-events");
+const m: Milestones = runBot({ limit: 40 * 3600, tapsPerSec: 2, dt: 0.25, events });
+console.log(events ? "Бот пользуется событиями (без рекламы)\n" : "Бот без событий\n");
 let ok = true;
 console.log("Веха                         Бот            Цель");
 for (const target of TARGETS) {

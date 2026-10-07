@@ -24,6 +24,8 @@ import {
 } from "../../src/core/commands";
 import { deskCost, equipCost, floorUnlockCost, qualCost } from "../../src/core/economy";
 import { EventQueue } from "../../src/core/events";
+import { claimShift, declineKredik, openNote, tapDebik } from "../../src/core/live";
+import { NOTE } from "../../src/core/live-state";
 import { step } from "../../src/core/sim";
 import { createState, type OfficeState, popcount } from "../../src/core/state";
 
@@ -45,8 +47,12 @@ export interface BotOptions {
   readonly limit: number;
   readonly tapsPerSec: number;
   readonly dt: number;
+  /** Пользуется событиями без рекламы: открывает записки, ловит дебиков, забирает премию смены. */
+  readonly events?: boolean;
   /** Наблюдатель раз в минуту игры (для отладочных кривых дохода). */
   readonly observe?: (t: number, s: OfficeState) => void;
+  /** Видит события каждого шага до очистки очереди (разбор источников дохода). */
+  readonly onEvents?: (q: EventQueue) => void;
 }
 
 const PERK_PRIORITY: PerkId[] = [
@@ -162,6 +168,15 @@ function buyPerks(s: OfficeState, q: EventQueue): void {
   }
 }
 
+/** Живой игрок реагирует не мгновенно: на записку и дебика уходит пара секунд. */
+function playEvents(s: OfficeState, q: EventQueue): void {
+  const L = s.live;
+  if (L.note !== NOTE.none && L.noteTtl < 10) openNote(s, q);
+  if (L.debikTtl > 0 && L.debikTtl < 4) tapDebik(s, q);
+  if (L.kredikOffer > 0) declineKredik(s);
+  if (L.shiftReward > 0) claimShift(s, false, q);
+}
+
 export function runBot(opts: BotOptions): Milestones {
   const s = createState();
   const q = new EventQueue(1 << 14);
@@ -178,8 +193,10 @@ export function runBot(opts: BotOptions): Milestones {
       tapAcc -= 1;
     }
     step(s, opts.dt, q);
+    if (opts.events === true) playEvents(s, q);
     mergeAll(s, q);
     for (let k = 0; k < 40 && shop(s, q); k++) mergeAll(s, q);
+    opts.onEvents?.(q);
     q.clear();
 
     const progress = s.floorsUnlocked * 100 + maxRankOn(s, top);

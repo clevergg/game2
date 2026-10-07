@@ -3,6 +3,7 @@ import { BALANCE } from "../data/balance";
 import { FLOOR_COUNT } from "../data/floors";
 import { PERK_COUNT, perkIndex } from "../data/perks";
 import { floorMult, globalMult, rankIncome } from "./economy";
+import { CNT, createLive, type LiveState } from "./live-state";
 
 export interface FloorState {
   /** Ранг батракана за каждым столом, 0 — стол пуст. */
@@ -49,6 +50,8 @@ export interface OfficeState {
   rng: number;
   /** Секунд до следующего автослияния (перк). */
   autoMergeTimer: number;
+  /** События и дневные слои. */
+  readonly live: LiveState;
 }
 
 export function initialTimer(desk: number): number {
@@ -109,6 +112,7 @@ export function createState(): OfficeState {
     incomePerSec: 0,
     rng: 0x9e3779b9,
     autoMergeTimer: BALANCE.autoMergePeriod,
+    live: createLive(),
   };
   resetFloor(s, 0);
   recomputeIncome(s);
@@ -119,6 +123,17 @@ export function addKukishi(s: OfficeState, amount: number): void {
   s.kukishi += amount;
   s.earnedThisRun += amount;
   s.totalEarned += amount;
+  s.live.counters[CNT.earned] = s.totalEarned;
+}
+
+/** Базовый доход в секунду без временных баффов — мера для наград «N секунд дохода». */
+/** +1 к счётчику действий (прогресс планов смены и поручений). */
+export function bump(s: OfficeState, counter: number): void {
+  s.live.counters[counter] = (s.live.counters[counter] ?? 0) + 1;
+}
+
+export function baseIncome(s: OfficeState): number {
+  return s.incomePerSec / Math.max(1e-9, s.buffMult);
 }
 
 export function firstFreeDesk(s: OfficeState, fi: number): number {

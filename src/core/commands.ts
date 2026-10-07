@@ -18,8 +18,10 @@ import {
   trashRefund,
 } from "./economy";
 import { DENY, type DenyReason, EV, type EventQueue } from "./events";
+import { CNT } from "./live-state";
 import {
   addKukishi,
+  bump,
   firstFreeDesk,
   type FloorState,
   type OfficeState,
@@ -69,6 +71,7 @@ export function tap(s: OfficeState, fi: number, desk: number, q: EventQueue): Co
   if (!f || !validDesk(f, desk) || f.desks[desk] === 0) return deny(q, DENY.invalid);
   const gain = tapValue(s.incomePerSec);
   addKukishi(s, gain);
+  bump(s, CNT.taps);
   q.push(EV.tap, fi, desk, 0, gain);
   return 0;
 }
@@ -84,6 +87,7 @@ function placeHire(
   const rank = f.qual;
   const rare = random(s) < BALANCE.rareChance;
   f.hires++;
+  bump(s, CNT.hires);
   f.desks[desk] = rank;
   f.rare[desk] = rare ? 1 : 0;
   f.payoutTimers[desk] = BALANCE.payoutPeriod;
@@ -173,6 +177,7 @@ export function mergeDesks(
   f.desks[from] = 0;
   f.rare[from] = 0;
   f.payoutTimers[to] = BALANCE.payoutPeriod;
+  bump(s, CNT.merges);
   q.push(EV.merged, fi, to, rank);
   if (becameRare) q.push(EV.rareAppeared, fi, to, rank);
   unlockCard(s, fi, rank, rare, q);

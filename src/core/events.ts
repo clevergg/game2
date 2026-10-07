@@ -35,6 +35,38 @@ export const EV = {
   reorganized: 15,
   /** a — индекс перка, b — новый уровень. */
   perkBought: 16,
+  /** b — тип записки (NOTE). */
+  noteSpawned: 17,
+  /** b — тип записки, value — подарок (кукиши) или 0. */
+  noteOpened: 18,
+  noteMissed: 19,
+  debikSpawned: 20,
+  /** value — награда. */
+  debikCaught: 21,
+  debikLeft: 22,
+  /** value — сумма займа. */
+  kredikOffered: 23,
+  kredikAccepted: 24,
+  kredikRepaid: 25,
+  /** b — сколько тапов нужно. */
+  shabashkaStarted: 26,
+  /** value — награда. */
+  shabashkaWon: 27,
+  shabashkaLost: 28,
+  /** value — цель заработка. */
+  inspectionStarted: 29,
+  /** value — награда. */
+  inspectionWon: 30,
+  inspectionLost: 31,
+  /** b — BUFF. */
+  buffStarted: 32,
+  buffEnded: 33,
+  /** value — премия смены. */
+  shiftDone: 34,
+  /** a — номер поручения. */
+  taskDone: 35,
+  /** value — кукиши; b — день серии (аванс) или 1, если премия удвоена. */
+  rewardClaimed: 36,
 } as const;
 
 export type EvKind = (typeof EV)[keyof typeof EV];

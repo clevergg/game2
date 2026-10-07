@@ -7,6 +7,8 @@ import { BALANCE } from "../data/balance";
 import { FLOOR_COUNT } from "../data/floors";
 import { PERK_COUNT, perkMax } from "../data/perks";
 import { MAX_RANK } from "../data/ranks";
+import { applyBuffs } from "./live";
+import { BUFF_COUNT, CNT, CNT_COUNT, TASK_COUNT } from "./live-state";
 import { createState, type OfficeState, recomputeIncome } from "./state";
 
 export const SAVE_VERSION = 2;
@@ -36,6 +38,23 @@ export interface SaveV2 {
   readonly rareCards: number[];
   readonly rng: number;
   readonly savedAt: number;
+  /** Дневные слои и баффы. Появились в Фазе 6; без них загружается чистый слой. */
+  readonly live?: LiveSave;
+}
+
+/** Сохраняется только долгоживущее; записки, дебики, шабашки и проверки после загрузки появятся заново. */
+export interface LiveSave {
+  readonly buffs: number[];
+  readonly debt: number;
+  readonly counters: number[];
+  readonly shift: [type: number, target: number, base: number, no: number, reward: number];
+  readonly taskType: number[];
+  readonly taskTarget: number[];
+  readonly taskBase: number[];
+  readonly taskClaimed: number[];
+  readonly taskDay: number;
+  readonly avansDay: number;
+  readonly avansStreak: number;
 }
 
 export function toSave(s: OfficeState, now: number): SaveV2 {
@@ -62,6 +81,24 @@ export function toSave(s: OfficeState, now: number): SaveV2 {
     rareCards: Array.from(s.rareCards),
     rng: s.rng,
     savedAt: now,
+    live: liveSave(s),
+  };
+}
+
+function liveSave(s: OfficeState): LiveSave {
+  const L = s.live;
+  return {
+    buffs: Array.from(L.buffs),
+    debt: L.debt,
+    counters: Array.from(L.counters),
+    shift: [L.shiftType, L.shiftTarget, L.shiftBase, L.shiftNo, L.shiftReward],
+    taskType: Array.from(L.taskType),
+    taskTarget: Array.from(L.taskTarget),
+    taskBase: Array.from(L.taskBase),
+    taskClaimed: Array.from(L.taskClaimed),
+    taskDay: L.taskDay,
+    avansDay: L.avansDay,
+    avansStreak: L.avansStreak,
   };
 }
 
@@ -72,7 +109,10 @@ const int = (x: unknown, lo: number, hi: number): x is number =>
   Number.isInteger(x) && (x as number) >= lo && (x as number) <= hi;
 const intArray = (x: unknown, len: number, lo: number, hi: number): x is number[] =>
   Array.isArray(x) && x.length === len && x.every((v) => int(v, lo, hi));
+const numArray = (x: unknown, len: number): x is number[] =>
+  Array.isArray(x) && x.length === len && x.every(num);
 const CARD_MASK = (1 << MAX_RANK) - 1;
+const PLAN_TYPES = 6;
 
 /** Возвращает состояние или null, если данные невалидны. Старые версии мигрируются. */
 export function fromSave(data: unknown): OfficeState | null {
@@ -133,8 +173,53 @@ export function fromSave(data: unknown): OfficeState | null {
   s.cards.set(d["cards"]);
   s.rareCards.set(d["rareCards"]);
   s.rng = d["rng"];
-  recomputeIncome(s);
+  s.live.counters[CNT.earned] = s.totalEarned;
+  // Битый слой событий не стоит прогресса: тогда просто начинаем его заново
+  if (d["live"] !== undefined) loadLive(s, d["live"]);
+  applyBuffs(s);
   return s;
+}
+
+function loadLive(s: OfficeState, x: unknown): void {
+  if (!isObj(x)) return;
+  const shift = x["shift"];
+  if (
+    !numArray(x["buffs"], BUFF_COUNT) ||
+    !num(x["debt"]) ||
+    !numArray(x["counters"], CNT_COUNT) ||
+    !Array.isArray(shift) ||
+    shift.length !== 5 ||
+    !int(shift[0], -1, PLAN_TYPES - 1) ||
+    !num(shift[1]) ||
+    !num(shift[2]) ||
+    !int(shift[3], 0, 1e9) ||
+    !num(shift[4]) ||
+    !intArray(x["taskType"], TASK_COUNT, -1, PLAN_TYPES - 1) ||
+    !numArray(x["taskTarget"], TASK_COUNT) ||
+    !numArray(x["taskBase"], TASK_COUNT) ||
+    !intArray(x["taskClaimed"], TASK_COUNT, 0, 1) ||
+    !int(x["taskDay"], -1, 1e7) ||
+    !int(x["avansDay"], -1, 1e7) ||
+    !int(x["avansStreak"], 0, 1000)
+  )
+    return;
+  const L = s.live;
+  L.buffs.set(x["buffs"]);
+  L.debt = x["debt"];
+  L.counters.set(x["counters"]);
+  L.counters[CNT.earned] = s.totalEarned;
+  L.shiftType = shift[0];
+  L.shiftTarget = shift[1];
+  L.shiftBase = shift[2];
+  L.shiftNo = shift[3];
+  L.shiftReward = shift[4];
+  L.taskType.set(x["taskType"]);
+  L.taskTarget.set(x["taskTarget"]);
+  L.taskBase.set(x["taskBase"]);
+  L.taskClaimed.set(x["taskClaimed"]);
+  L.taskDay = x["taskDay"];
+  L.avansDay = x["avansDay"];
+  L.avansStreak = x["avansStreak"];
 }
 
 /** v1 (срез): один этаж, уровень найма рос сам. Переносим батраканов, кукиши и картотеку. */

@@ -36,10 +36,15 @@ describe("layout", () => {
     expect(computeLayout(390, 844, 12, 12, METRICS).rows).toBe(4);
   });
 
-  test("на десктопе игра в центральной колонке", () => {
+  test("на широком экране офис в 4 колонки по центру, слоповина — в колонке интерфейса", () => {
     const L = computeLayout(1920, 1080, 8, 12, METRICS);
-    expect(L.contentW).toBeLessThanOrEqual(520);
-    expect(L.contentLeft).toBeGreaterThan(600);
+    expect(L.cols).toBe(4);
+    expect(L.rows).toBe(2);
+    expect(L.contentW).toBeLessThanOrEqual(960);
+    expect(L.contentLeft).toBeGreaterThan(400);
+    expect(L.slopX).toBe((1920 - 520) / 2 + 46);
+    // Портрет не меняется
+    expect(computeLayout(412, 915, 8, 12, METRICS).cols).toBe(2);
   });
 });
 

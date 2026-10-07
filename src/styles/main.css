@@ -673,6 +673,7 @@ body {
 
 .hire-cost {
   display: flex;
+  white-space: nowrap;
   align-items: center;
   gap: 4px;
   font-size: 16px;
@@ -1209,4 +1210,19 @@ body {
 
 .board-score {
   font-variant-numeric: tabular-nums;
+}
+
+/* Узкие телефоны (360 px): план смены важнее подписи */
+@media (max-width: 400px) {
+  .shift-title {
+    display: none;
+  }
+
+  .hire-label {
+    font-size: 13px;
+  }
+
+  .hire-cost {
+    font-size: 14px;
+  }
 }

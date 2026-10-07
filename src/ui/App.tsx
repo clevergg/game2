@@ -268,7 +268,7 @@ export function App({ store, actions, atlas }: Props) {
         {s.hint === "hire" ? <div class="hint hint-hire">{t("hintHire")}</div> : null}
         {blat ? (
           <button type="button" class="blat" disabled={s.adBusy} onClick={actions.hireBlat}>
-            <span class="ad-mark">▶</span> {t("hire")}
+            <span class="ad-mark">▶</span> {t("hireAd")}
           </button>
         ) : null}
         <button

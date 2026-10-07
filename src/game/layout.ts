@@ -6,7 +6,14 @@
 /** Верхняя панель: деньги и кнопки (64) + строка плана смены и лифта (44). */
 export const HUD_TOP = 108;
 export const HUD_BOTTOM = 104;
-const MAX_CONTENT_W = 520;
+/** Ширина колонки интерфейса (HUD, панели). */
+export const MAX_CONTENT_W = 520;
+/** На широком экране (ПК, планшет боком) офис шире колонки интерфейса: 4 колонки столов. */
+const MAX_WIDE_W = 960;
+
+export function isWide(w: number, h: number): boolean {
+  return w >= 900 && w >= h * 1.3;
+}
 
 export interface Layout {
   readonly w: number;
@@ -47,9 +54,10 @@ export function computeLayout(
   deskMax: number,
   m: SpriteMetrics,
 ): Layout {
-  const contentW = Math.min(w, MAX_CONTENT_W);
+  const wide = isWide(w, h);
+  const contentW = Math.min(w, wide ? MAX_WIDE_W : MAX_CONTENT_W);
   const contentLeft = (w - contentW) / 2;
-  const cols = columnsFor(deskCount);
+  const cols = wide ? 4 : columnsFor(deskCount);
   const rows = Math.ceil(deskCount / cols);
   const available = Math.max(1, h - HUD_TOP - HUD_BOTTOM);
   const cellW = contentW / cols;
@@ -80,7 +88,8 @@ export function computeLayout(
     scale,
     deskX,
     deskY,
-    slopX: contentLeft + 46,
+    // Слоповина — в нижней панели интерфейса, а она всегда в центральной колонке
+    slopX: (w - Math.min(w, MAX_CONTENT_W)) / 2 + 46,
     slopY: h - 18,
     contentLeft,
     contentW,

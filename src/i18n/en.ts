@@ -5,6 +5,7 @@ export const en: Dict = {
     title: "Kontorka: Workroaches",
     hire: "Hire a Workroach",
     perSec: "/s",
+    hireAd: "Hire for an ad",
     noSpace: "No desks",
     noMoney: "Not enough figs",
     promotion: "PROMOTED!",

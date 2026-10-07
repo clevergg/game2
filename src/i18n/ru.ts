@@ -4,6 +4,7 @@ export const ru = {
     title: "Конторка: Батраканы",
     hire: "Нанять батракана",
     perSec: "/с",
+    hireAd: "Нанять за рекламу",
     noSpace: "Нет мест",
     noMoney: "Мало кукишей",
     promotion: "ПОВЫШЕНИЕ!",
